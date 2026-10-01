@@ -8,7 +8,7 @@ from pymongo.errors import ConnectionFailure, ConfigurationError, OperationFailu
 load_dotenv()
 
 
-class Tools():
+class MonitoreoTools():
     def __init__(self):
         # La cadena de conexión completa (recomendado, la da Atlas directamente).
         self.MONGO_URI = os.getenv("MONGO_URI")
@@ -78,21 +78,21 @@ class Tools():
         print(f"Llamando a la función get_ultimas_lecturas({cultivo})")
         db = self.get_db()
         coleccion = db[self.COLLECTION_NAME]
- 
+
         desde = datetime.datetime.utcnow() - datetime.timedelta(minutes=minutos)
- 
+
         filtro_cultivo = {"cultivo": {"$regex": f"^{cultivo}$", "$options": "i"}}
- 
+
         cursor = coleccion.find(
             {**filtro_cultivo, "fecha_hora": {"$gte": desde}}
         ).sort("fecha_hora", -1)
         lecturas_raw = list(cursor)
- 
+
         # Fallback: si no hubo lecturas en la ventana de tiempo, traer la última que exista
         if not lecturas_raw:
             ultima = coleccion.find_one(filtro_cultivo, sort=[("fecha_hora", -1)])
             lecturas_raw = [ultima] if ultima else []
- 
+
         lecturas = []
         for l in lecturas_raw:
             fecha = l.get("fecha_hora")
@@ -105,7 +105,7 @@ class Tools():
                 "riego_activo": l.get("riego_activo"),
                 "fecha_hora": fecha.isoformat() if fecha else None
             })
- 
+
         return {
             "cultivo": cultivo,
             "total_lecturas": len(lecturas),
@@ -121,7 +121,7 @@ class Tools():
 
 
 if __name__ == "__main__":
-    tools = Tools()
+    tools = MonitoreoTools()
     resultado = tools.check_connection()
     print(resultado)
     ultimas = tools.get_ultimas_lecturas("Tomate")
