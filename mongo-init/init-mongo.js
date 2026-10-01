@@ -46,3 +46,52 @@ db.LEO_AI.insertOne({
   sensor_id: "sensor-demo-1",
   temperatura_c: 24.5
 });
+
+// ---------------------------------------------------------------------------
+// Agente de sensores: lecturas multi-sensor y catálogo.
+// Cada nodo publica solo las variables que mide, por eso solo _id,
+// fecha_hora, sensor_id y parcela son obligatorios. Los valores numéricos
+// usan "number" (SHT31 y sondas entregan decimales).
+// ---------------------------------------------------------------------------
+const num = { bsonType: "number" };
+
+db.createCollection("lecturas_sensores", {
+  validator: {
+    $jsonSchema: {
+      bsonType: "object",
+      required: ["_id", "fecha_hora", "sensor_id", "parcela"],
+      properties: {
+        _id: { bsonType: "objectId" },
+        fecha_hora: { bsonType: "date" },
+        sensor_id: { bsonType: "string" },
+        parcela: { bsonType: "string" },
+        cultivo: { bsonType: "string" },
+        temperatura_c: num,
+        humedad_aire_pct: num,
+        humedad_suelo_pct: num,
+        riego_activo: { bsonType: "bool" },
+        co2_ppm: num,
+        lux: num,
+        temp_suelo_c: num,
+        ec_suelo_us_cm: num,
+        ph_suelo: num,
+        n_mg_kg: num,
+        p_mg_kg: num,
+        k_mg_kg: num,
+        temp_agua_deposito_c: num,
+        temp_agua_retorno_c: num,
+        nivel_deposito_cm: num,
+        nivel_deposito_pct: num,
+        ec_solucion_ms_cm: num,
+        ph_solucion: num,
+        fallas: { bsonType: "array", items: { bsonType: "string" } }
+      }
+    }
+  }
+});
+db.lecturas_sensores.createIndex({ sensor_id: 1, fecha_hora: -1 });
+db.lecturas_sensores.createIndex({ parcela: 1, fecha_hora: -1 });
+
+db.createCollection("sensores");
+db.sensores.createIndex({ sensor_id: 1 }, { unique: true });
+// El catálogo se siembra con: python -m betito_bot.sensores.simulador

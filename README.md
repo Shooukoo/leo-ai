@@ -78,3 +78,23 @@ corré solo la imagen de la app sin levantar el servicio `mongo`:
 docker build -t leo-ai .
 docker run -it --rm --env-file .env leo-ai
 ```
+
+## Agente de sensores
+
+El agente `sensores` (`betito_bot/agents/sensores_agent.py`) responde sobre la salud de los sensores del invernadero usando solo funciones fijas (`betito_bot/tools/sensores_tools.py`): `estado_sensores`, `ultimo_estado`, `historial`, `nivel_depositos`, `calcular_dpv` y `riesgo_botrytis`. Las reglas de validación viven en `betito_bot/sensores/validacion.py`. El `Orchestrator` lo elige por palabras clave (sensor, falla, depósito, nivel, CO2, lux, pH, EC...); el resto va a `monitoreo`.
+
+Como todavía no hay hardware, se alimenta con datos simulados:
+
+```bash
+docker compose up -d mongo
+# en el .env local apunta MONGO_URI a mongodb://localhost:27017/ y MONGO_DB_NAME=LEO_AI
+python -m betito_bot.sensores.simulador --limpiar --backfill 24                 # 24 h sanas
+python -m betito_bot.sensores.simulador --limpiar --backfill 24 --falla ph_14 --falla sensor_mudo
+python -m betito_bot.sensores.simulador --continuo                              # 1 lectura/min
+```
+
+Fallas disponibles: `sensor_mudo`, `ds18b20_85`, `nivel_0`, `ph_14`, `co2_2500`, `lux_saturado`, `sht31_discrepante`, `suelo_plano` (esta última necesita `--falla-min 180`). Las colecciones nuevas (`lecturas_sensores`, `sensores`) se crean en `mongo-init/init-mongo.js` (solo al crear el volumen; con un volumen existente, ejecuta `docker compose down -v`) y el simulador siembra el catálogo.
+
+Pruebas: `pip install -r requirements-dev.txt && pytest`.
+
+Más contexto, hallazgos y vacíos abiertos en [`docs/sensores.md`](docs/sensores.md).
