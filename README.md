@@ -51,3 +51,30 @@ python main.py
 
 Escribe tu consulta sobre un cultivo (por ejemplo, "¿cómo está el tomate?").
 Escribe `exit` o `salir` para terminar.
+
+## Uso con Docker
+
+Para desarrollo local, `docker-compose.yml` levanta el agente junto a un
+MongoDB local (en vez de Atlas), con la colección `LEO_AI` creada a partir
+del mismo `$jsonSchema` usado en Atlas y una lectura de ejemplo precargada
+(ver `mongo-init/init-mongo.js`).
+
+1. Copia `.env.example` a `.env` y completa al menos `API_KEY_GROQ` (la
+   variable `MONGO_URI` se sobreescribe automáticamente para apuntar al
+   Mongo del contenedor).
+2. Levanta los servicios:
+
+   ```bash
+   docker compose up --build
+   ```
+
+   El CLI queda interactivo en la terminal (usa `docker attach` si lo
+   corriste en background, o simplemente dejá la consola en foreground).
+
+Si en cambio querés conectarte a tu MongoDB Atlas real desde el contenedor,
+corré solo la imagen de la app sin levantar el servicio `mongo`:
+
+```bash
+docker build -t leo-ai .
+docker run -it --rm --env-file .env leo-ai
+```

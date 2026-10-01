@@ -1,0 +1,33 @@
+services:
+  app:
+    build: .
+    env_file:
+      - .env
+    environment:
+      MONGO_URI: mongodb://mongo:27017/
+      MONGO_DB_NAME: LEO_AI
+      MONGO_COLLECTION_LECTURAS: LEO_AI
+    depends_on:
+      mongo:
+        condition: service_healthy
+    stdin_open: true
+    tty: true
+
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: LEO_AI
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+      - ./mongo-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mongo_data:
