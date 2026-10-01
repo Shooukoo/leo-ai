@@ -11,7 +11,7 @@ agentes nuevos (riego, alertas, clima, etc.) sin reescribir lo existente.
 ## Estructura del repo
 
 ```
-leo_ai/
+betito_bot/
   llm/            # construcción del cliente del LLM (Groq)
   memory/         # memoria de conversación (historial por agente)
   tools/          # implementación de herramientas por dominio (Mongo, etc.)
@@ -23,11 +23,11 @@ main.py           # entrypoint
 
 Convenciones para agregar un agente nuevo:
 
-1. Crear `leo_ai/agents/<nombre>_agent.py` con una clase que extienda
-   `BaseAgent` (`leo_ai/agents/base.py`) e implemente `respond(user_text)`.
-2. Si necesita herramientas propias, agregarlas en `leo_ai/tools/` como un
+1. Crear `betito_bot/agents/<nombre>_agent.py` con una clase que extienda
+   `BaseAgent` (`betito_bot/agents/base.py`) e implemente `respond(user_text)`.
+2. Si necesita herramientas propias, agregarlas en `betito_bot/tools/` como un
    módulo separado (una clase de tools por dominio).
-3. Registrar el agente en `leo_ai/orchestrator/router.py` y definir ahí el
+3. Registrar el agente en `betito_bot/orchestrator/router.py` y definir ahí el
    criterio de enrutamiento (por intención, palabra clave, agente por
    defecto, etc.).
 

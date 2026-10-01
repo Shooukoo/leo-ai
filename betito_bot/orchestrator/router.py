@@ -1,6 +1,6 @@
 from groq import Groq
 
-from leo_ai.agents.monitoreo_agent import MonitoreoAgent
+from betito_bot.agents.monitoreo_agent import MonitoreoAgent
 
 
 class Orchestrator:

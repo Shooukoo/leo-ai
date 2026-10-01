@@ -1,5 +1,5 @@
-from leo_ai.llm.groq_client import build_client
-from leo_ai.orchestrator.router import Orchestrator
+from betito_bot.llm.groq_client import build_client
+from betito_bot.orchestrator.router import Orchestrator
 
 
 def main():

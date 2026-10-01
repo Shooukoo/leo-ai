@@ -2,9 +2,9 @@ import json
 
 from groq import Groq
 
-from leo_ai.agents.base import BaseAgent
-from leo_ai.memory.simple_memory import SimpleMemory
-from leo_ai.tools.monitoreo_tools import MonitoreoTools
+from betito_bot.agents.base import BaseAgent
+from betito_bot.memory.simple_memory import SimpleMemory
+from betito_bot.tools.monitoreo_tools import MonitoreoTools
 
 MEMORY_MAX_MESSAGES = 20
 
