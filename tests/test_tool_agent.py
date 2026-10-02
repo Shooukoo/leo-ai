@@ -68,3 +68,55 @@ def test_ruteo():
         assert o.route(texto).name == "sensores", texto
     for texto in ["¿Cómo está el tomate?", "Dame las últimas lecturas de la fresa"]:
         assert o.route(texto).name == "monitoreo", texto
+
+
+def test_emite_eventos_en_orden():
+    client = FakeClient([_resp(tool_calls=[_tool_call(args={"a": 1, "b": 2})]), _resp("3")])
+    ag = _agente(client, {"suma": lambda a, b: {"r": a + b}})
+    eventos = []
+    ag.respond("suma", on_event=eventos.append)
+    assert [e.tipo for e in eventos] == ["pensando", "tool_call", "tool_result", "pensando"]
+    assert eventos[1].datos == {"nombre": "suma", "argumentos": '{"a": 1, "b": 2}'}
+    assert eventos[2].datos == {"nombre": "suma", "error": None}
+
+
+def test_evento_de_tool_con_error():
+    client = FakeClient([_resp(tool_calls=[_tool_call(name="nope")]), _resp("ok")])
+    eventos = []
+    _agente(client, {}).respond("x", on_event=eventos.append)
+    assert "desconocida" in eventos[2].datos["error"]
+
+
+def test_reset_borra_memoria():
+    client = FakeClient([_resp("hola"), _resp("otra")])
+    ag = _agente(client, {})
+    ag.respond("primera")
+    ag.reset()
+    ag.respond("segunda")
+    assert [m["content"] for m in client.llamadas[1]] == ["sys", "segunda"]
+
+
+def test_mencion_fuerza_agente():
+    o = Orchestrator(client=None)
+    agente, texto = o.resolver("@sensores ¿y la parcela 2?")
+    assert agente.name == "sensores" and texto == "¿y la parcela 2?"
+    agente, texto = o.resolver("@Monitoreo ¿cómo están los sensores?")
+    assert agente.name == "monitoreo" and texto == "¿cómo están los sensores?"
+
+
+def test_mencion_desconocida():
+    import pytest
+    from betito_bot.orchestrator.router import AgenteDesconocido
+
+    with pytest.raises(AgenteDesconocido):
+        Orchestrator(client=None).resolver("@riego hola")
+
+
+def test_monitoreo_pasa_minutos_a_la_tool():
+    from betito_bot.agents.monitoreo_agent import MonitoreoAgent
+
+    llamadas = []
+    tools = SimpleNamespace(get_ultimas_lecturas=lambda cultivo, minutos=120: llamadas.append((cultivo, minutos)) or {})
+    client = FakeClient([_resp(tool_calls=[_tool_call("get_ultimas_lecturas", {"cultivo": "Fresa", "minutos": 30})]), _resp("ok")])
+    assert MonitoreoAgent(client, tools=tools).respond("fresa última media hora") == "ok"
+    assert llamadas == [("Fresa", 30)]

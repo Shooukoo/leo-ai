@@ -46,14 +46,12 @@ class MonitoreoTools():
             raise ConnectionError(f"No fue posible conectar a MongoDB Atlas: {e}")
 
         self._db = self._client[self.DB_NAME]
-        print(f"Conexión exitosa a la base de datos '{self.DB_NAME}'")
         return self._db
 
     def check_connection(self):
         """
         Prueba rápida de conectividad, solo confirma que el agente puede hablar con la BD.
         """
-        print("Llamando a la función check_connection")
         try:
             db = self.get_db()
             collections = db.list_collection_names()
@@ -75,7 +73,6 @@ class MonitoreoTools():
         recientes, hace un segundo intento trayendo la última disponible
         sin importar la fecha, para no dejar al usuario sin respuesta.
         """
-        print(f"Llamando a la función get_ultimas_lecturas({cultivo})")
         db = self.get_db()
         coleccion = db[self.COLLECTION_NAME]
 

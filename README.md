@@ -5,7 +5,7 @@ para consultar lecturas de sensores (temperatura, humedad de suelo/aire,
 riego) almacenadas en MongoDB y ayudar a tomar decisiones sobre los cultivos.
 
 El proyecto está organizado para crecer hacia un **sistema multiagente**:
-hoy existe un único agente de monitoreo, pero la estructura permite sumar
+hoy existen los agentes de monitoreo y de sensores, y la estructura permite sumar
 agentes nuevos (riego, alertas, clima, etc.) sin reescribir lo existente.
 
 ## Estructura del repo
@@ -24,7 +24,8 @@ main.py           # entrypoint
 Convenciones para agregar un agente nuevo:
 
 1. Crear `betito_bot/agents/<nombre>_agent.py` con una clase que extienda
-   `BaseAgent` (`betito_bot/agents/base.py`) e implemente `respond(user_text)`.
+   `ToolAgent` (`betito_bot/agents/tool_agent.py`) y defina `name`,
+   `descripcion`, prompt de sistema, esquema de tools y registro.
 2. Si necesita herramientas propias, agregarlas en `betito_bot/tools/` como un
    módulo separado (una clase de tools por dominio).
 3. Registrar el agente en `betito_bot/orchestrator/router.py` y definir ahí el
@@ -49,8 +50,16 @@ Convenciones para agregar un agente nuevo:
 python main.py
 ```
 
-Escribe tu consulta sobre un cultivo (por ejemplo, "¿cómo está el tomate?").
-Escribe `exit` o `salir` para terminar.
+Escribe tu consulta (por ejemplo, "¿cómo está el tomate?"). Mientras el agente
+trabaja se ve un spinner y cada herramienta que consulta; al final, la respuesta
+con el nombre del agente que la dio.
+
+- `/ayuda`, `/agentes`, `/limpiar` (borra la memoria de los agentes), `/salir`.
+- `@sensores ...` o `@monitoreo ...` al inicio fuerza qué agente responde; útil
+  para preguntas de seguimiento que no tienen palabras clave.
+- Tab autocompleta comandos y agentes, Alt+Enter hace salto de línea, flechas
+  arriba/abajo recorren el historial, Ctrl+C cancela la respuesta en curso y
+  Ctrl+D (o `exit` / `salir`) termina la sesión.
 
 ## Uso con Docker
 

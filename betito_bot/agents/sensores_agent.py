@@ -74,6 +74,7 @@ TOOLS_SCHEMA = [
 
 class SensoresAgent(ToolAgent):
     name = "sensores"
+    descripcion = "Salud de los sensores: fallas, lecturas fuera de rango, depósitos, DPV y botrytis."
 
     def __init__(self, client: Groq, tools: SensoresTools | None = None):
         self.tools = tools or SensoresTools()

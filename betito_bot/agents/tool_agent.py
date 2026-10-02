@@ -5,6 +5,7 @@ from typing import Callable
 from groq import Groq
 
 from betito_bot.agents.base import BaseAgent
+from betito_bot.agents.eventos import Evento, OnEvento
 from betito_bot.memory.simple_memory import SimpleMemory
 
 DEFAULT_MODEL = "openai/gpt-oss-20b"
@@ -23,6 +24,7 @@ class ToolAgent(BaseAgent):
     Las subclases definen `name`, el prompt de sistema, el esquema de tools y
     un registro `{nombre_tool: callable}`. El bucle tiene tope de iteraciones
     y cualquier excepción de una tool vuelve al modelo como `{"error": ...}`.
+    Si se pasa `on_event`, se le avisa cada paso del bucle (ver `Evento`).
     """
 
     name = "tool_agent"
@@ -45,6 +47,9 @@ class ToolAgent(BaseAgent):
         self.max_iterations = max_iterations
         self.memory = SimpleMemory(MEMORY_MAX_MESSAGES)
 
+    def reset(self) -> None:
+        self.memory.clear()
+
     def run_tool(self, name: str, raw_arguments: str | None) -> dict:
         func = self.registry.get(name)
         if func is None:
@@ -55,11 +60,16 @@ class ToolAgent(BaseAgent):
         except Exception as e:  # el modelo debe ver el fallo, no el programa caerse
             return {"error": f"{type(e).__name__}: {e}"}
 
-    def respond(self, user_text: str) -> str:
+    def _emitir(self, on_event: OnEvento | None, tipo: str, **datos) -> None:
+        if on_event is not None:
+            on_event(Evento(tipo, self.name, datos))
+
+    def respond(self, user_text: str, on_event: OnEvento | None = None) -> str:
         messages = [self.system_prompt] + self.memory.messages()
         messages.append({"role": "user", "content": user_text})
 
         for _ in range(self.max_iterations):
+            self._emitir(on_event, "pensando")
             resp = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
@@ -92,7 +102,11 @@ class ToolAgent(BaseAgent):
                 }
             )
             for tc in msg.tool_calls:
-                result = self.run_tool(tc.function.name, tc.function.arguments)
+                nombre, argumentos = tc.function.name, tc.function.arguments
+                self._emitir(on_event, "tool_call", nombre=nombre, argumentos=argumentos)
+                result = self.run_tool(nombre, argumentos)
+                error = result.get("error") if isinstance(result, dict) else None
+                self._emitir(on_event, "tool_result", nombre=nombre, error=error)
                 messages.append(
                     {
                         "role": "tool",

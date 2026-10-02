@@ -11,3 +11,6 @@ class SimpleMemory():
     #Obtener todos los mensajes.
     def messages(self):
         return list(self.history)
+
+    def clear(self):
+        self.history.clear()
