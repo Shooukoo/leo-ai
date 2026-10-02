@@ -26,7 +26,7 @@ class ToolAgent(BaseAgent):
     """
 
     name = "tool_agent"
-    max_tokens = 600
+    max_tokens = 1500
 
     def __init__(
         self,

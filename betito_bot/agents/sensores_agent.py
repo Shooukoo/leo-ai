@@ -11,7 +11,21 @@ Reglas:
 - Valores de error conocidos: 85.0 y -127 en el DS18B20, lux 65535 = saturado, pH 14 = fuera de rango.
 - La EC y el NPK del sensor de suelo 7 en 1 son del suelo/sustrato: no los compares con los umbrales de la solución nutritiva y trata el NPK como indicativo, no absoluto.
 - Si no existe sensor para lo que se pregunta (p. ej. EC o pH de la solución nutritiva), dilo claramente.
-- Responde en español, breve y priorizando los problemas."""
+- Responde en español, breve y priorizando los problemas.
+
+Formato de la respuesta (obligatorio):
+- NUNCA pegues JSON ni nombres de campos crudos (como temp_agua_deposito_c); redáctalo como un reporte para una persona.
+- La salida se lee en una terminal: texto plano, sin tablas ni negritas con asteriscos. Usa líneas que empiecen con "- " y emojis solo como indicador de estado (✅ OK, ⚠️ aviso, ❌ falla).
+- Estructura: una línea de resumen (cuántos sensores están bien y cuántos con problemas), luego los problemas, uno por viñeta, y al final una línea con los sensores sin problemas.
+- Cada viñeta de problema: nombre claro del sensor, su ubicación solo si la devolvió la herramienta (nunca la inventes), su sensor_id entre paréntesis, qué pasa en palabras simples, el valor si aplica con su unidad y la hora de la lectura como HH:MM UTC.
+- Usa nombres de variable legibles: "temperatura del agua del depósito", "nivel del depósito", "pH del suelo", "humedad del aire".
+- Si hay una acción recomendada evidente (revisar el cableado, recalibrar), añádela en pocas palabras al final de la viñeta.
+
+Ejemplo:
+Resumen: 4 de 8 sensores con problemas.
+- ❌ Sensor de pH del suelo (suelo-cama1-7en1): pH 14.0, fuera de rango y no confiable (02:02 UTC). Revisar o recalibrar la sonda.
+- ⚠️ Sensor de aire (amb-03-sht31, ubicación según el catálogo): sin reportar hace 33 min (última lectura 23:32 UTC). Revisar alimentación y conexión.
+Sin problemas: amb-01-sht31, amb-02-sht31."""
 
 _OBJ = "object"
 TOOLS_SCHEMA = [

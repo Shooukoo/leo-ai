@@ -159,9 +159,13 @@ class SensoresTools:
                     problemas.setdefault(lec["sensor_id"], []).append(f"zona {zona}: {aviso}")
 
         ok = [s["sensor_id"] for s in sensores if s["sensor_id"] not in problemas]
+        info = {s["sensor_id"]: s for s in sensores}
         return {
             "total_sensores": len(sensores),
-            "con_problemas": [{"sensor_id": k, "problemas": v} for k, v in problemas.items()],
+            "con_problemas": [
+                {"sensor_id": k, "modelo": info[k].get("modelo"), "ubicacion": info[k].get("ubicacion"), "problemas": v}
+                for k, v in problemas.items()
+            ],
             "sin_problemas": ok,
         }
 
