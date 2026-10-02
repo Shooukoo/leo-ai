@@ -102,7 +102,7 @@ class Interfaz:
     def bienvenida(self):
         self.console.print(
             Panel.fit(
-                "[bold green]LEO AI[/] · monitoreo de invernadero\n"
+                "[bold green]BETITO BOT[/] · monitoreo de invernadero\n"
                 "[dim]Escribe tu pregunta. [cyan]/ayuda[/] para comandos, "
                 "[cyan]@sensores[/] o [cyan]@monitoreo[/] para elegir agente.[/]",
                 border_style="green",
