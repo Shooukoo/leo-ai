@@ -6,3 +6,7 @@ __pycache__/
 *.pyc
 .vscode/
 token.json
+.agents/
+.claude/
+CLAUDE.md
+skills-lock.json
