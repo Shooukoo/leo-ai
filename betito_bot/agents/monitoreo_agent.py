@@ -1,4 +1,4 @@
-from groq import Groq
+from langchain_core.language_models import BaseChatModel
 
 from betito_bot.agents.tool_agent import ToolAgent
 from betito_bot.tools.monitoreo_tools import MonitoreoTools
@@ -38,7 +38,7 @@ class MonitoreoAgent(ToolAgent):
     name = "monitoreo"
     descripcion = "Lecturas recientes por cultivo y recomendaciones generales (agente por defecto)."
 
-    def __init__(self, client: Groq, tools: MonitoreoTools | None = None):
+    def __init__(self, client: BaseChatModel, tools: MonitoreoTools | None = None):
         self.tools = tools or MonitoreoTools()
         super().__init__(
             client,

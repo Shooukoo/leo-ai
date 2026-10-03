@@ -1,15 +1,33 @@
+x-app: &app
+  build: .
+  env_file:
+    - .env
+  environment:
+    MONGO_URI: mongodb://mongo:27017/
+    MONGO_DB_NAME: LEO_AI
+    MONGO_COLLECTION_LECTURAS: LEO_AI
+  depends_on:
+    mongo:
+      condition: service_healthy
+
 services:
-  app:
-    build: .
-    env_file:
-      - .env
-    environment:
-      MONGO_URI: mongodb://mongo:27017/
-      MONGO_DB_NAME: LEO_AI
-      MONGO_COLLECTION_LECTURAS: LEO_AI
-    depends_on:
-      mongo:
-        condition: service_healthy
+  # Microservicio FastAPI: POST /chat en http://localhost:8000 (documentación en /docs).
+  api:
+    <<: *app
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Consola interactiva: docker compose run --rm consola
+  consola:
+    <<: *app
+    command: ["python", "main.py"]
+    profiles: ["consola"]
     stdin_open: true
     tty: true
 

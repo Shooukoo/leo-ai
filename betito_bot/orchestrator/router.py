@@ -3,7 +3,7 @@ import unicodedata
 from contextvars import ContextVar
 from typing import Callable
 
-from groq import Groq
+from langchain_core.language_models import BaseChatModel
 
 from betito_bot.agents.base import BaseAgent
 from betito_bot.agents.eventos import Evento, OnEvento
@@ -48,7 +48,7 @@ class Orchestrator:
     Un mensaje que empieza con `@nombre` va directo a ese agente.
     """
 
-    def __init__(self, client: Groq, skills: dict | None = None):
+    def __init__(self, client: BaseChatModel, skills: dict | None = None):
         self.default_agent = MonitoreoAgent(client)
         self.agents: dict[str, BaseAgent] = {
             self.default_agent.name: self.default_agent,

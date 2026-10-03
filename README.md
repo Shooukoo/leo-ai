@@ -1,8 +1,12 @@
 # leo-ai
 
-Agente de IA por consola (**Betito Bot**) para monitoreo agrícola / invernadero.
-Un LLM servido por Groq, con tool-calling, consulta las lecturas de sensores
-guardadas en MongoDB y ayuda a tomar decisiones sobre los cultivos.
+Agente de IA (**Betito Bot**) para monitoreo agrícola / invernadero. Un LLM
+servido por Groq, orquestado con LangChain (`ChatGroq` + tool-calling),
+consulta las lecturas de sensores guardadas en MongoDB y ayuda a tomar
+decisiones sobre los cultivos. Se usa como microservicio FastAPI
+(`POST /chat`) o desde la terminal.
+
+**Instalación como microservicio:** [`docs/microservicio.md`](docs/microservicio.md).
 
 Hoy hay dos agentes:
 
@@ -42,6 +46,19 @@ Copia `.env.example` a `.env` y completa las variables:
 | `TZ_OFFSET_HORAS` | `-6` | Desfase respecto a UTC para deducir la hora local. |
 
 ## Uso
+
+### Microservicio (FastAPI)
+
+```bash
+uvicorn betito_bot.api:app --port 8000          # o: docker compose up -d --build
+curl -X POST localhost:8000/chat -H "Content-Type: application/json" -d '{"mensaje": "¿Cómo está el tomate?"}'
+```
+
+Endpoints: `POST /chat`, `GET /agentes`, `POST /reset` y `GET /health`. La
+documentación interactiva está en `/docs`. La guía completa está en
+[`docs/microservicio.md`](docs/microservicio.md).
+
+### Consola
 
 ```bash
 python main.py            # consola (igual que python -m betito_bot.cli)
@@ -91,9 +108,9 @@ para pasarle una tarea a otro agente (se ve en el panel lateral), y
 
 ## Uso con Docker
 
-`docker-compose.yml` levanta el agente junto a un MongoDB local, con las
-colecciones ya creadas por `mongo-init/init-mongo.js` y una lectura de ejemplo
-(cultivo "Tomate") para el agente `monitoreo`.
+`docker-compose.yml` levanta el microservicio (`api`, puerto 8000) junto a un
+MongoDB local, con las colecciones ya creadas por `mongo-init/init-mongo.js` y
+una lectura de ejemplo (cultivo "Tomate") para el agente `monitoreo`.
 
 1. Copia `.env.example` a `.env` y completa al menos `API_KEY_GROQ`. Compose
    sobreescribe `MONGO_URI`, `MONGO_DB_NAME` y `MONGO_COLLECTION_LECTURAS`
@@ -101,11 +118,9 @@ colecciones ya creadas por `mongo-init/init-mongo.js` y una lectura de ejemplo
 2. Levanta los servicios:
 
    ```bash
-   docker compose up --build
+   docker compose up -d --build      # api + mongo
+   docker compose run --rm consola   # la consola, con el mismo Mongo, con el mismo Mongo
    ```
-
-   El CLI queda interactivo en la terminal (usa `docker attach` si lo corriste
-   en background).
 
 `init-mongo.js` solo corre al crear el volumen. Si cambias el esquema, recrea
 el volumen con `docker compose down -v`.
@@ -115,7 +130,8 @@ de la app sin levantar el servicio `mongo`:
 
 ```bash
 docker build -t leo-ai .
-docker run -it --rm --env-file .env leo-ai
+docker run --rm -p 8000:8000 --env-file .env leo-ai           # microservicio
+docker run -it --rm --env-file .env leo-ai python main.py     # terminal
 ```
 
 ## Datos simulados
@@ -158,7 +174,8 @@ pytest tests/test_validacion.py::test_ph_fuera_de_rango   # una prueba
 pytest -k falla                                           # por nombre
 ```
 
-No necesitan Mongo ni API key de Groq: usan `mongomock` y un cliente LLM falso.
+No necesitan Mongo ni API key de Groq: usan `mongomock`, un chat model falso
+de LangChain (`tests/fakes.py`) y `TestClient` de FastAPI para la API.
 La imagen Docker solo instala `requirements.txt`, así que las pruebas se corren
 en el host.
 
@@ -168,25 +185,28 @@ en el host.
 betito_bot/
   agents/         # agentes: en Python (*_agent.py) o en Markdown (<nombre>.md: frontmatter + prompt)
   core/           # config, skills, agentes .md y frontmatter
-  llm/            # construcción del cliente del LLM (Groq)
+  llm/            # construcción del chat model de LangChain (ChatGroq)
   memory/         # memoria de conversación (historial por agente)
   orchestrator/   # enruta cada mensaje al agente correspondiente
   sensores/       # catálogo, reglas de validación y simulador
   skills/         # skills: skills/<nombre>/SKILL.md
   tools/          # herramientas por dominio, de solo lectura sobre Mongo
+  api.py          # microservicio FastAPI: /chat, /agentes, /reset, /health
   cli.py          # interfaz de consola (prompt_toolkit + Rich)
 config.toml       # rutas de skills y agentes en Markdown
 docs/             # contexto del proyecto y de los sensores
 mongo-init/       # colecciones, esquemas e índices del Mongo local
 tests/
-main.py           # entrypoint
+main.py           # entrypoint de la consola
 ```
 
 Un mensaje recorre `main.py` → `cli.py` → `Orchestrator.handle()` →
-`agente.respond()` → bucle de tool-calling contra Groq → métodos de una clase
-`*Tools` que leen Mongo. Los `Evento` que emite el agente (pensando, tool_call,
-tool_result y, al delegar, agente_inicio/agente_fin) son lo único que la
-consola consume para mostrar el progreso.
+`agente.respond()` → bucle de tool-calling de LangChain (`ChatGroq.bind_tools`)
+→ métodos de una clase `*Tools` que leen Mongo. Los `Evento` que emite el
+agente (pensando, tool_call, tool_result y, al delegar, agente_inicio/agente_fin)
+son lo único que la consola consume para mostrar el progreso. En la API,
+`POST /chat` llama a `Orchestrator.handle()` igual y junta las tools usadas en
+la respuesta.
 
 ### Agente de sensores
 

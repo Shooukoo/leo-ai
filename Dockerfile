@@ -7,4 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD ["python", "main.py"]
+EXPOSE 8000
+
+# Por defecto, el microservicio FastAPI. La consola: `python main.py` (ver docker-compose.yml).
+CMD ["uvicorn", "betito_bot.api:app", "--host", "0.0.0.0", "--port", "8000"]

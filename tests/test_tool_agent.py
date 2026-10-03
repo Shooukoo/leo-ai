@@ -1,29 +1,10 @@
 import json
 from types import SimpleNamespace
+from langchain_core.messages import AIMessage
 
 from betito_bot.agents.tool_agent import FALLBACK_TEXT, ToolAgent
 from betito_bot.orchestrator.router import Orchestrator
-
-
-def _tool_call(name="suma", args=None, id="c1"):
-    return SimpleNamespace(id=id, function=SimpleNamespace(name=name, arguments=json.dumps(args or {})))
-
-
-def _resp(content=None, tool_calls=None):
-    return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content, tool_calls=tool_calls))])
-
-
-class FakeClient:
-    def __init__(self, respuestas):
-        self.respuestas = list(respuestas)
-        self.llamadas = []
-        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
-
-    def _create(self, **kw):
-        self.llamadas.append(kw["messages"][:])
-        return self.respuestas.pop(0) if self.respuestas else self.ultima
-
-    ultima = None
+from tests.fakes import FakeClient, resp as _resp, tool_call as _tool_call
 
 
 def _agente(client, registry, **kw):
@@ -35,7 +16,7 @@ def test_ejecuta_tool_y_responde():
     ag = _agente(client, {"suma": lambda a, b: {"r": a + b}})
     assert ag.respond("suma") == "el resultado es 3"
     tool_msg = client.llamadas[1][-1]
-    assert tool_msg["role"] == "tool" and json.loads(tool_msg["content"]) == {"r": 3}
+    assert tool_msg.type == "tool" and tool_msg.tool_call_id == "c1" and json.loads(tool_msg.content) == {"r": 3}
 
 
 def test_error_de_tool_vuelve_al_modelo():
@@ -45,13 +26,13 @@ def test_error_de_tool_vuelve_al_modelo():
     client = FakeClient([_resp(tool_calls=[_tool_call()]), _resp("ok")])
     ag = _agente(client, {"suma": rota})
     assert ag.respond("x") == "ok"
-    assert "boom" in client.llamadas[1][-1]["content"]
+    assert "boom" in client.llamadas[1][-1].content
 
 
 def test_tool_desconocida():
     client = FakeClient([_resp(tool_calls=[_tool_call(name="nope")]), _resp("ok")])
     _agente(client, {}).respond("x")
-    assert "desconocida" in client.llamadas[1][-1]["content"]
+    assert "desconocida" in client.llamadas[1][-1].content
 
 
 def test_tope_de_iteraciones():
@@ -93,7 +74,7 @@ def test_reset_borra_memoria():
     ag.respond("primera")
     ag.reset()
     ag.respond("segunda")
-    assert [m["content"] for m in client.llamadas[1]] == ["sys", "segunda"]
+    assert [m.content for m in client.llamadas[1]] == ["sys", "segunda"]
 
 
 def test_mencion_fuerza_agente():
@@ -120,3 +101,26 @@ def test_monitoreo_pasa_minutos_a_la_tool():
     client = FakeClient([_resp(tool_calls=[_tool_call("get_ultimas_lecturas", {"cultivo": "Fresa", "minutos": 30})]), _resp("ok")])
     assert MonitoreoAgent(client, tools=tools).respond("fresa última media hora") == "ok"
     assert llamadas == [("Fresa", 30)]
+
+
+def test_enlaza_tools_modelo_y_max_tokens():
+    client = FakeClient([_resp("ok")])
+    schema = [{"type": "function", "function": {"name": "suma", "description": "Suma", "parameters": {"type": "object", "properties": {}}}}]
+    ag = ToolAgent(client, "sys", schema, {}, model="m1")
+    ag.model = "m2"  # /model lo cambia en caliente
+    ag.respond("x")
+    kw = client.kwargs[0]
+    assert kw["model"] == "m2" and kw["max_tokens"] == ag.max_tokens
+    assert kw["tools"][0]["function"]["name"] == "suma"
+
+
+def test_tool_call_con_json_invalido_vuelve_al_modelo():
+    from langchain_core.messages import InvalidToolCall
+
+    malo = AIMessage(content="", invalid_tool_calls=[InvalidToolCall(name="suma", args="{a:", id="c9", error="JSON inválido")])
+    client = FakeClient([malo, _resp("ok")])
+    eventos = []
+    assert _agente(client, {"suma": lambda: {}}).respond("x", on_event=eventos.append) == "ok"
+    assert client.llamadas[1][-1].tool_call_id == "c9"
+    assert "JSON inválido" in eventos[2].datos["error"]
+

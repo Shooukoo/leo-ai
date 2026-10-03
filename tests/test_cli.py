@@ -42,16 +42,16 @@ def test_skill_y_delegacion_desde_la_consola():
     from betito_bot.cli import Interfaz
     from betito_bot.core.skills import Skill
     from betito_bot.orchestrator.router import Orchestrator
-    from tests.test_tool_agent import FakeClient, _resp, _tool_call
+    from tests.fakes import FakeClient, resp, tool_call
 
     class SkillFalsa(Skill):
         def leer(self):
             return "Instrucciones de prueba"
 
     client = FakeClient([
-        _resp(tool_calls=[_tool_call("delegate", {"agent": "sensores", "task": "revisa"})]),
-        _resp("todo bien"),
-        _resp("Reporte listo"),
+        resp(tool_calls=[tool_call("delegate", {"agent": "sensores", "task": "revisa"})]),
+        resp("todo bien"),
+        resp("Reporte listo"),
     ])
     orq = Orchestrator(client, skills={"reporte": SkillFalsa("reporte", "Reporte", None)})
     salida = StringIO()

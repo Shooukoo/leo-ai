@@ -1,8 +1,9 @@
 import json
 import os
-from typing import Callable
+from typing import Any, Callable
 
-from groq import Groq
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 
 from betito_bot.agents.base import BaseAgent
 from betito_bot.agents.eventos import Evento, OnEvento
@@ -17,14 +18,23 @@ FALLBACK_TEXT = (
     "sin llegar a una respuesta. Intenta reformular la pregunta."
 )
 
+_CLASES_MENSAJE = {"system": SystemMessage, "user": HumanMessage, "assistant": AIMessage}
+
+
+def a_mensajes(historial: list[dict]) -> list[BaseMessage]:
+    """Convierte la memoria (`{"role", "content"}`) a mensajes de LangChain."""
+    return [_CLASES_MENSAJE[m["role"]](content=m["content"]) for m in historial]
+
 
 class ToolAgent(BaseAgent):
-    """Agente con bucle de tool-calling reutilizable (Groq / formato OpenAI).
+    """Agente con bucle de tool-calling reutilizable sobre un chat model de LangChain.
 
-    Las subclases definen `name`, el prompt de sistema, el esquema de tools y
-    un registro `{nombre_tool: callable}`. El bucle tiene tope de iteraciones
-    y cualquier excepción de una tool vuelve al modelo como `{"error": ...}`.
-    Si se pasa `on_event`, se le avisa cada paso del bucle (ver `Evento`).
+    `client` es un `BaseChatModel` (en producción `ChatGroq`, ver
+    `betito_bot/llm/groq_client.py`). Las subclases definen `name`, el prompt
+    de sistema, el esquema de tools (formato OpenAI, que `bind_tools` acepta tal
+    cual) y un registro `{nombre_tool: callable}`. El bucle tiene tope de
+    iteraciones y cualquier excepción de una tool vuelve al modelo como
+    `{"error": ...}`. Si se pasa `on_event`, se le avisa cada paso (ver `Evento`).
     """
 
     name = "tool_agent"
@@ -32,7 +42,7 @@ class ToolAgent(BaseAgent):
 
     def __init__(
         self,
-        client: Groq,
+        client: BaseChatModel,
         system_prompt: str,
         tools_schema: list[dict],
         registry: dict[str, Callable[..., dict]],
@@ -40,7 +50,7 @@ class ToolAgent(BaseAgent):
         max_iterations: int = MAX_ITERATIONS,
     ):
         self.client = client
-        self.system_prompt = {"role": "system", "content": system_prompt}
+        self.system_prompt = SystemMessage(content=system_prompt)
         self.tools_schema = tools_schema
         self.registry = registry
         self.model = model or os.getenv("LLM_MODEL", DEFAULT_MODEL)
@@ -50,12 +60,11 @@ class ToolAgent(BaseAgent):
     def reset(self) -> None:
         self.memory.clear()
 
-    def run_tool(self, name: str, raw_arguments: str | None) -> dict:
+    def run_tool(self, name: str, args: dict[str, Any]) -> dict:
         func = self.registry.get(name)
         if func is None:
             return {"error": f"Herramienta desconocida: {name}"}
         try:
-            args = json.loads(raw_arguments or "{}")
             return func(**args)
         except Exception as e:  # el modelo debe ver el fallo, no el programa caerse
             return {"error": f"{type(e).__name__}: {e}"}
@@ -64,55 +73,39 @@ class ToolAgent(BaseAgent):
         if on_event is not None:
             on_event(Evento(tipo, self.name, datos))
 
+    def _llm(self):
+        # Se enlaza en cada respuesta: el orquestador agrega tools (`delegate`) después
+        # de construir el agente y `/model` puede cambiar `self.model` en caliente.
+        if self.tools_schema:
+            return self.client.bind_tools(self.tools_schema, model=self.model, max_tokens=self.max_tokens)
+        return self.client.bind(model=self.model, max_tokens=self.max_tokens)
+
     def respond(self, user_text: str, on_event: OnEvento | None = None) -> str:
-        messages = [self.system_prompt] + self.memory.messages()
-        messages.append({"role": "user", "content": user_text})
+        messages = [self.system_prompt, *a_mensajes(self.memory.messages()), HumanMessage(content=user_text)]
+        llm = self._llm()
 
         for _ in range(self.max_iterations):
             self._emitir(on_event, "pensando")
-            resp = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                tools=self.tools_schema,
-                max_tokens=self.max_tokens,
-            )
-            msg = resp.choices[0].message
-
-            if not getattr(msg, "tool_calls", None):
-                assistant_text = msg.content or ""
+            msg: AIMessage = llm.invoke(messages)
+            if not msg.tool_calls and not msg.invalid_tool_calls:
+                assistant_text = msg.text or ""
                 self.memory.add("user", user_text)
                 self.memory.add("assistant", assistant_text)
                 return assistant_text
 
-            messages.append(
-                {
-                    "role": "assistant",
-                    "content": msg.content or "",
-                    "tool_calls": [
-                        {
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {
-                                "name": tc.function.name,
-                                "arguments": tc.function.arguments,
-                            },
-                        }
-                        for tc in msg.tool_calls
-                    ],
-                }
-            )
+            messages.append(msg)
             for tc in msg.tool_calls:
-                nombre, argumentos = tc.function.name, tc.function.arguments
-                self._emitir(on_event, "tool_call", nombre=nombre, argumentos=argumentos)
-                result = self.run_tool(nombre, argumentos)
+                nombre = tc["name"]
+                self._emitir(on_event, "tool_call", nombre=nombre, argumentos=json.dumps(tc["args"], ensure_ascii=False))
+                result = self.run_tool(nombre, tc["args"])
                 error = result.get("error") if isinstance(result, dict) else None
                 self._emitir(on_event, "tool_result", nombre=nombre, error=error, resultado=result)
-                messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tc.id,
-                        "content": json.dumps(result, ensure_ascii=False, default=str),
-                    }
-                )
+                messages.append(ToolMessage(content=json.dumps(result, ensure_ascii=False, default=str), tool_call_id=tc["id"]))
+            for tc in msg.invalid_tool_calls:  # argumentos que no son JSON válido
+                nombre = tc.get("name") or "?"
+                self._emitir(on_event, "tool_call", nombre=nombre, argumentos=tc.get("args") or "")
+                result = {"error": f"Argumentos no válidos: {tc.get('error') or tc.get('args')}"}
+                self._emitir(on_event, "tool_result", nombre=nombre, error=result["error"], resultado=result)
+                messages.append(ToolMessage(content=json.dumps(result, ensure_ascii=False), tool_call_id=tc.get("id") or ""))
 
         return FALLBACK_TEXT

@@ -1,4 +1,4 @@
-from groq import Groq
+from langchain_core.language_models import BaseChatModel
 
 from betito_bot.agents.tool_agent import ToolAgent
 from betito_bot.tools.sensores_tools import SensoresTools
@@ -76,7 +76,7 @@ class SensoresAgent(ToolAgent):
     name = "sensores"
     descripcion = "Salud de los sensores: fallas, lecturas fuera de rango, depósitos, DPV y botrytis."
 
-    def __init__(self, client: Groq, tools: SensoresTools | None = None):
+    def __init__(self, client: BaseChatModel, tools: SensoresTools | None = None):
         self.tools = tools or SensoresTools()
         super().__init__(
             client,
