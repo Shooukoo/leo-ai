@@ -9,7 +9,9 @@ class Evento:
     Tipos:
     - `pensando`: el agente va a consultar al modelo (una vez por iteración).
     - `tool_call`: el modelo pidió una herramienta; datos `nombre` y `argumentos` (JSON crudo).
-    - `tool_result`: terminó la herramienta; datos `nombre` y `error` (None si salió bien).
+    - `tool_result`: terminó la herramienta; datos `nombre`, `error` (None si salió bien) y `resultado`.
+    - `agente_inicio` / `agente_fin`: el orquestador delegó una tarea a otro agente
+      (`tool_call` de `delegate`); datos `tarea` en el inicio y `ok` en el fin.
     """
 
     tipo: str

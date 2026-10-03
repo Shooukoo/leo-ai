@@ -44,21 +44,35 @@ Copia `.env.example` a `.env` y completa las variables:
 ## Uso
 
 ```bash
-python main.py
+python main.py            # consola (igual que python -m betito_bot.cli)
 ```
 
 Escribe tu consulta (por ejemplo, "¿cómo está el tomate?" o "¿hay algún sensor
 con falla?"). Mientras el agente trabaja se ve un spinner y una línea por cada
-herramienta que consulta; al final, la respuesta con el nombre del agente que
-la dio. La barra inferior muestra el agente y el modelo en uso.
+herramienta que consulta o agente en el que delega; al final, la respuesta con
+el nombre del agente que la dio. La barra inferior muestra el agente y el
+modelo en uso.
 
-- `/ayuda`, `/agentes`, `/limpiar` (borra la memoria de los agentes y la
-  pantalla), `/salir`.
-- `@sensores ...` o `@monitoreo ...` al inicio fuerza qué agente responde.
-- Tab autocompleta comandos y agentes, Alt+Enter hace salto de línea, las
-  flechas arriba/abajo recorren el historial (se guarda en
+- `/ayuda`, `/agentes`, `/skills`, `/limpiar` (borra la memoria de los agentes
+  y la pantalla), `/salir`.
+- `/nombre-de-skill [@agente] petición` aplica una skill.
+- `@sensores ...`, `@monitoreo ...` (o `@nombre` de un agente en Markdown) al
+  inicio fuerza qué agente responde.
+- Tab autocompleta comandos, skills y agentes, Alt+Enter hace salto de línea,
+  las flechas arriba/abajo recorren el historial (se guarda en
   `~/.leo_ai_historial`), Ctrl+C cancela la respuesta en curso y Ctrl+D (o
   `exit` / `salir`) termina la sesión.
+
+Las rutas de skills y agentes en Markdown se configuran en `config.toml`.
+
+### Skills y agentes dedicados
+
+- `betito_bot/skills/<nombre>/SKILL.md`: instrucciones reutilizables que se invocan con
+  `/nombre [@agente] petición`. Ver `betito_bot/skills/README.md`. Ejemplos:
+  `/reporte-diario` y `/diagnostico-sensor`.
+- `betito_bot/agents/<nombre>.md`: agentes definidos por un prompt y una lista de tools
+  existentes. Se usan con `@nombre`, y `monitoreo` también puede pasarles
+  trabajo con la tool `delegate`. Ver `betito_bot/agents/README.md`.
 
 ### Cómo se elige el agente
 
@@ -70,6 +84,10 @@ Cada agente guarda su propio historial (los últimos 20 mensajes) y el ruteo se
 decide en cada mensaje. Por eso una pregunta de seguimiento sin palabras clave
 la responde `monitoreo`, que no vio la conversación con `sensores`; para
 continuar con el mismo agente, empieza el mensaje con `@sensores`.
+
+`monitoreo` tiene además dos tools del orquestador: `delegate(agent, task)`,
+para pasarle una tarea a otro agente (se ve en el panel lateral), y
+`usar_skill(nombre)`, para leer una skill cuando la necesita.
 
 ## Uso con Docker
 
@@ -148,13 +166,16 @@ en el host.
 
 ```
 betito_bot/
-  agents/         # un módulo por agente: system prompt, esquema de tools y registro
+  agents/         # agentes: en Python (*_agent.py) o en Markdown (<nombre>.md: frontmatter + prompt)
+  core/           # config, skills, agentes .md y frontmatter
   llm/            # construcción del cliente del LLM (Groq)
   memory/         # memoria de conversación (historial por agente)
   orchestrator/   # enruta cada mensaje al agente correspondiente
   sensores/       # catálogo, reglas de validación y simulador
+  skills/         # skills: skills/<nombre>/SKILL.md
   tools/          # herramientas por dominio, de solo lectura sobre Mongo
   cli.py          # interfaz de consola (prompt_toolkit + Rich)
+config.toml       # rutas de skills y agentes en Markdown
 docs/             # contexto del proyecto y de los sensores
 mongo-init/       # colecciones, esquemas e índices del Mongo local
 tests/
@@ -163,7 +184,9 @@ main.py           # entrypoint
 
 Un mensaje recorre `main.py` → `cli.py` → `Orchestrator.handle()` →
 `agente.respond()` → bucle de tool-calling contra Groq → métodos de una clase
-`*Tools` que leen Mongo.
+`*Tools` que leen Mongo. Los `Evento` que emite el agente (pensando, tool_call,
+tool_result y, al delegar, agente_inicio/agente_fin) son lo único que la
+consola consume para mostrar el progreso.
 
 ### Agente de sensores
 
@@ -190,6 +213,9 @@ que devuelven funciones fijas de solo lectura.
 `fecha_hora` se guarda siempre en UTC sin zona horaria.
 
 ### Agregar un agente
+
+Lo más simple es un agente dedicado en `betito_bot/agents/<nombre>.md`, que reutiliza tools
+ya existentes (ver `betito_bot/agents/README.md`). Si necesita tools nuevas:
 
 1. Crea `betito_bot/agents/<nombre>_agent.py` con una clase que extienda
    `ToolAgent` (`betito_bot/agents/tool_agent.py`) y defina `name`,

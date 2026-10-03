@@ -77,7 +77,7 @@ def test_emite_eventos_en_orden():
     ag.respond("suma", on_event=eventos.append)
     assert [e.tipo for e in eventos] == ["pensando", "tool_call", "tool_result", "pensando"]
     assert eventos[1].datos == {"nombre": "suma", "argumentos": '{"a": 1, "b": 2}'}
-    assert eventos[2].datos == {"nombre": "suma", "error": None}
+    assert eventos[2].datos == {"nombre": "suma", "error": None, "resultado": {"r": 3}}
 
 
 def test_evento_de_tool_con_error():

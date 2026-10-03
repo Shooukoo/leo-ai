@@ -1,0 +1,5 @@
+# Rutas de skills y agentes en Markdown. Otro archivo: BETITO_CONFIG=/ruta/config.toml
+
+[rutas]                 # relativas a este archivo
+skills = "betito_bot/skills"
+agentes = "betito_bot/agents"   # solo se leen los .md

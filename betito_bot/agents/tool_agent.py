@@ -106,7 +106,7 @@ class ToolAgent(BaseAgent):
                 self._emitir(on_event, "tool_call", nombre=nombre, argumentos=argumentos)
                 result = self.run_tool(nombre, argumentos)
                 error = result.get("error") if isinstance(result, dict) else None
-                self._emitir(on_event, "tool_result", nombre=nombre, error=error)
+                self._emitir(on_event, "tool_result", nombre=nombre, error=error, resultado=result)
                 messages.append(
                     {
                         "role": "tool",

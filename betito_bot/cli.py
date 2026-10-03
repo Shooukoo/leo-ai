@@ -1,7 +1,8 @@
 """Interfaz de consola: entrada con prompt_toolkit y salida con Rich.
 
 La UI no conoce el bucle de los agentes: solo consume los `Evento` que emiten
-(pensando, tool_call, tool_result) y muestra la respuesta final.
+(pensando, tool_call, tool_result, agente_inicio/agente_fin al delegar) y
+muestra la respuesta final.
 """
 
 import json
@@ -19,7 +20,7 @@ from rich.table import Table
 from rich.text import Text
 
 from betito_bot.agents.eventos import Evento
-from betito_bot.llm.groq_client import build_client
+from betito_bot.core.skills import mensaje_para_agente
 from betito_bot.orchestrator.router import AgenteDesconocido, Orchestrator
 
 HISTORIAL_PATH = Path.home() / ".leo_ai_historial"
@@ -28,23 +29,25 @@ SALIDAS = ("exit", "salir")
 COMANDOS = {
     "/ayuda": "Muestra comandos, agentes y atajos",
     "/agentes": "Lista los agentes disponibles",
+    "/skills": "Lista las skills (se invocan con /nombre [@agente] petición)",
     "/limpiar": "Borra la memoria de los agentes y la pantalla",
     "/salir": "Termina la sesión",
 }
 
 
 class LeoCompleter(Completer):
-    """Autocompleta `/comandos` y `@agentes` al inicio del mensaje."""
+    """Autocompleta `/comandos`, `/skills` y `@agentes` al inicio del mensaje."""
 
-    def __init__(self, agentes: dict[str, str]):
+    def __init__(self, agentes: dict[str, str], skills: dict[str, str] | None = None):
         self.agentes = agentes  # {nombre: descripcion}
+        self.skills = skills or {}
 
     def get_completions(self, document, complete_event):
         texto = document.text_before_cursor
         if " " in texto:
             return
         if texto.startswith("/"):
-            opciones = COMANDOS
+            opciones = {**COMANDOS, **{f"/{n}": f"skill · {d}" for n, d in self.skills.items()}}
         elif texto.startswith("@"):
             opciones = {f"@{nombre}": desc for nombre, desc in self.agentes.items()}
         else:
@@ -66,12 +69,16 @@ def formatear_argumentos(crudos: str | None) -> str:
 
 
 class Interfaz:
-    def __init__(self, orchestrator: Orchestrator, console: Console | None = None):
+    def __init__(self, orchestrator: Orchestrator, console: Console | None = None, avisos: list[str] | None = None):
         self.orchestrator = orchestrator
         self.console = console or Console(highlight=False)
+        self.avisos = avisos or []
         self.session = PromptSession(
             history=FileHistory(str(HISTORIAL_PATH)),
-            completer=LeoCompleter({n: a.descripcion for n, a in orchestrator.agents.items()}),
+            completer=LeoCompleter(
+                {n: a.descripcion for n, a in orchestrator.agents.items()},
+                {n: s.description for n, s in orchestrator.skills.items()},
+            ),
             complete_while_typing=True,
             key_bindings=self._atajos(),
             bottom_toolbar=self._barra_estado,
@@ -108,6 +115,8 @@ class Interfaz:
                 border_style="green",
             )
         )
+        for aviso in self.avisos:
+            self.console.print(f"[yellow]{aviso}[/]")
 
     def ayuda(self):
         tabla = Table(show_header=False, box=None, padding=(0, 2))
@@ -115,6 +124,8 @@ class Interfaz:
         tabla.add_column()
         for comando, desc in COMANDOS.items():
             tabla.add_row(comando, desc)
+        for skill in self.orchestrator.skills.values():
+            tabla.add_row(f"/{skill.name}", f"skill · {skill.description}")
         tabla.add_row("", "")
         for nombre, agente in self.orchestrator.agents.items():
             tabla.add_row(f"@{nombre}", agente.descripcion)
@@ -135,8 +146,21 @@ class Interfaz:
         self.console.print(tabla)
         self.console.print(
             "[dim]Sin @mención, los mensajes sobre sensores, fallas, depósitos o "
-            "variables (CO2, lux, pH, EC…) van a @sensores; el resto a @monitoreo.[/]"
+            "variables (CO2, lux, pH, EC…) van a @sensores; el resto a @monitoreo, "
+            "que puede delegar en los demás.[/]"
         )
+
+    def skills(self):
+        if not self.orchestrator.skills:
+            self.console.print("[yellow]No hay skills cargadas.[/]")
+            return
+        tabla = Table(title="Skills", title_justify="left", header_style="bold")
+        tabla.add_column("Skill", style="cyan")
+        tabla.add_column("Qué hace")
+        for skill in self.orchestrator.skills.values():
+            tabla.add_row(f"/{skill.name}", skill.description)
+        self.console.print(tabla)
+        self.console.print("[dim]Uso: /skill [@agente] petición.[/]")
 
     def on_event(self, ev: Evento):
         if ev.tipo == "pensando":
@@ -147,6 +171,11 @@ class Interfaz:
             self.console.print(Text.assemble(("  ⎿ ", "dim"), (ev.datos["nombre"], "cyan"), (f"({args})", "dim")))
         elif ev.tipo == "tool_result" and ev.datos.get("error"):
             self.console.print(Text(f"    ✗ {ev.datos['error']}", style="red"))
+        elif ev.tipo == "agente_inicio":
+            self._status.update(f"[bold]{ev.agente}[/] trabajando…")
+            self.console.print(Text.assemble(("  ⎿ ", "dim"), ("delega en ", "dim"), (f"@{ev.agente}", "magenta")))
+        elif ev.tipo == "agente_fin" and not ev.datos.get("ok"):
+            self.console.print(Text(f"    ✗ @{ev.agente} no terminó", style="red"))
 
     def responder(self, texto: str):
         try:
@@ -174,19 +203,25 @@ class Interfaz:
 
     def ejecutar_comando(self, texto: str) -> bool:
         """Ejecuta un `/comando`. Devuelve False si la sesión debe terminar."""
-        comando = texto.split()[0].lower()
+        comando, _, argumentos = texto.partition(" ")
+        comando = comando.lower()
+        skill = self.orchestrator.skills.get(comando[1:])
         if comando == "/salir":
             return False
         if comando == "/ayuda":
             self.ayuda()
         elif comando == "/agentes":
             self.agentes()
+        elif comando == "/skills":
+            self.skills()
         elif comando == "/limpiar":
             self.orchestrator.reset()
             self.orchestrator.ultimo_agente = None
             self.console.clear()
             self.bienvenida()
             self.console.print("[dim]Memoria de los agentes borrada.[/]")
+        elif skill is not None:
+            self.responder(mensaje_para_agente(skill, argumentos.strip()))
         else:
             self.console.print(f"[yellow]Comando desconocido: {comando}.[/] Escribe /ayuda.")
         return True
@@ -216,8 +251,18 @@ class Interfaz:
 
 
 def main():
-    Interfaz(Orchestrator(build_client())).run()
+    from betito_bot.core.config import cargar_config
+    from betito_bot.core.sistema import construir_orquestador
+    from betito_bot.llm.groq_client import build_client
 
+    avisos: list[str] = []
+    try:
+        client = build_client()
+    except Exception as e:  # p. ej. falta API_KEY_GROQ: la consola arranca y avisa
+        client = None
+        avisos.append(f"No se pudo crear el cliente de Groq ({e}). Revisa API_KEY_GROQ en .env.")
+    orchestrator, avisos_carga = construir_orquestador(cargar_config(), client)
+    Interfaz(orchestrator, avisos=avisos + avisos_carga).run()
 
 if __name__ == "__main__":
     main()
