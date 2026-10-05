@@ -47,7 +47,9 @@ def test_ruteo():
     o = Orchestrator(client=None)
     for texto in ["¿Cómo están los sensores?", "¿Cuál es el nivel del depósito?", "hay alguna falla?", "CO2 actual", "el pH está bien?"]:
         assert o.route(texto).name == "sensores", texto
-    for texto in ["¿Cómo está el tomate?", "Dame las últimas lecturas de la fresa"]:
+    for texto in ["¿Cómo estuvo el riego hoy?", "¿cuándo se regó la fresa?", "hay sobre-riego según el sensor de suelo?", "cada cuánto riegan"]:
+        assert o.route(texto).name == "riego", texto
+    for texto in ["¿Cómo está el tomate?", "Dame las últimas lecturas de la fresa", "riesgo de heladas"]:
         assert o.route(texto).name == "monitoreo", texto
 
 
@@ -90,7 +92,7 @@ def test_mencion_desconocida():
     from betito_bot.orchestrator.router import AgenteDesconocido
 
     with pytest.raises(AgenteDesconocido):
-        Orchestrator(client=None).resolver("@riego hola")
+        Orchestrator(client=None).resolver("@clima hola")
 
 
 def test_monitoreo_pasa_minutos_a_la_tool():

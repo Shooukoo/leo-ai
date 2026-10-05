@@ -51,7 +51,7 @@ docker compose ps        # api debe quedar "healthy"
 docker compose logs -f api
 ```
 
-Para cargar datos simulados de sensores (lo necesita el agente `sensores`):
+Para cargar datos simulados de sensores (los necesitan los agentes `sensores` y `riego`):
 
 ```bash
 docker compose exec api python -m betito_bot.sensores.simulador --limpiar --backfill 24

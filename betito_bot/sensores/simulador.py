@@ -3,6 +3,7 @@
 Uso:
     python -m betito_bot.sensores.simulador --limpiar --backfill 24
     python -m betito_bot.sensores.simulador --backfill 24 --falla ph_14 --falla sensor_mudo
+    python -m betito_bot.sensores.simulador --backfill 24 --falla sobre_riego --falla-min 480
     python -m betito_bot.sensores.simulador --continuo
 
 Escribe en la BD de `MONGO_URI`/`MONGO_DB_NAME`, colecciones
@@ -22,10 +23,25 @@ from betito_bot.sensores.catalogo import ALTURA_DEPOSITO_CM, CATALOGO, con_fecha
 
 TZ_OFFSET_H = float(os.getenv("TZ_OFFSET_HORAS", "-6"))
 
+# Riego programado: cada 4 h (hora local) se riega 10 min.
+RIEGO_CADA_MIN, RIEGO_DURA_MIN = 240, 10
+HUMEDAD_SUELO_BASE, HUMEDAD_SUELO_SUBIDA = 50.0, 12.0
+
 
 def _hora_decimal(t: datetime.datetime) -> float:
     local = t + datetime.timedelta(hours=TZ_OFFSET_H)
     return local.hour + local.minute / 60
+
+
+def _riego(t: datetime.datetime) -> tuple[bool, float]:
+    """(riego activo, humedad de suelo): sube mientras se riega y baja hasta el siguiente riego."""
+    local = t + datetime.timedelta(hours=TZ_OFFSET_H)
+    fase = (local.hour * 60 + local.minute) % RIEGO_CADA_MIN
+    if fase <= RIEGO_DURA_MIN:
+        avance = fase / RIEGO_DURA_MIN
+    else:
+        avance = (RIEGO_CADA_MIN - fase) / (RIEGO_CADA_MIN - RIEGO_DURA_MIN)
+    return fase < RIEGO_DURA_MIN, HUMEDAD_SUELO_BASE + HUMEDAD_SUELO_SUBIDA * avance
 
 
 def _base(t: datetime.datetime, rng: random.Random) -> dict:
@@ -35,12 +51,14 @@ def _base(t: datetime.datetime, rng: random.Random) -> dict:
     lux = max(0.0, 60000 * math.sin(math.pi * (h - 6) / 12)) if 6 <= h <= 18 else 0.0
     min_dia = h * 60
     pct = 90 - (min_dia / 1440) * 40
+    riego_activo, humedad_suelo = _riego(t)
     return {
         "temperatura_c": round(temp + rng.gauss(0, 0.2), 2),
         "humedad_aire_pct": round(min(95, max(40, 95 - 3 * (temp - 15))) + rng.gauss(0, 0.8), 1),
         "co2_ppm": round((450 if 7 <= h <= 18 else 600) + rng.gauss(0, 8)),
         "lux": round(lux + rng.gauss(0, 50)) if lux > 0 else 0,
-        "humedad_suelo_pct": round(55 + 5 * math.sin(2 * math.pi * h / 24) + rng.gauss(0, 0.3), 1),
+        "humedad_suelo_pct": round(humedad_suelo + rng.gauss(0, 0.3), 1),
+        "riego_activo": riego_activo,
         "temp_suelo_c": round(temp - 3 + rng.gauss(0, 0.1), 1),
         "ec_suelo_us_cm": round(1500 + rng.gauss(0, 15)),
         "ph_suelo": round(6.2 + rng.gauss(0, 0.02), 2),
@@ -54,7 +72,14 @@ def _base(t: datetime.datetime, rng: random.Random) -> dict:
     }
 
 
-# Fallas: nombre -> (sensor_id afectado, modificador o None si deja de reportar)
+def _riego_sin_subida(doc: dict) -> dict:
+    """Se riega pero la humedad se queda en su valor base (con su ruido)."""
+    _, esperada = _riego(doc["fecha_hora"])
+    return {"humedad_suelo_pct": round(doc["humedad_suelo_pct"] - esperada + HUMEDAD_SUELO_BASE, 1)}
+
+
+# Fallas: nombre -> (sensor_id afectado, modificador o None si deja de reportar).
+# El modificador es un dict de valores fijos o una función que recibe la lectura sana.
 FALLAS = {
     "sensor_mudo": ("amb-03-sht31", None),
     "ds18b20_85": ("dep-a-agua", {"temp_agua_deposito_c": 85.0, "temp_agua_retorno_c": -127.0}),
@@ -64,6 +89,8 @@ FALLAS = {
     "lux_saturado": ("amb-01-bh1750", {"lux": 65535}),
     "sht31_discrepante": ("amb-02-sht31", {"temperatura_c": 31.0, "humedad_aire_pct": 45.0}),
     "suelo_plano": ("suelo-cama1-7en1", {"humedad_suelo_pct": 52.0}),
+    "sobre_riego": ("suelo-cama1-7en1", lambda doc: {"humedad_suelo_pct": round(doc["humedad_suelo_pct"] + 20, 1)}),
+    "riego_sin_efecto": ("suelo-cama1-7en1", _riego_sin_subida),
 }
 
 
@@ -87,10 +114,12 @@ def generar_lecturas(
         }
         if s["cultivo"]:
             doc["cultivo"] = s["cultivo"]
+        if "humedad_suelo_pct" in s["variables"]:
+            doc["riego_activo"] = base["riego_activo"]
         for f in fallas:
             fsid, mod = FALLAS[f]
             if fsid == sid and mod:
-                doc.update(mod)
+                doc.update(mod(doc) if callable(mod) else mod)
         if sid == "amb-02-sht31" and "sht31_discrepante" not in fallas:
             doc["temperatura_c"] = round(doc["temperatura_c"] + 0.3, 2)
         docs.append(doc)

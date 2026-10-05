@@ -77,7 +77,7 @@ def test_mensaje_vacio_da_422():
 def test_agentes_y_reset():
     orq = _orquestador(resp("hola"))
     with TestClient(create_app(orq)) as c:
-        assert {a["nombre"] for a in c.get("/agentes").json()} == {"monitoreo", "sensores"}
+        assert {a["nombre"] for a in c.get("/agentes").json()} == {"monitoreo", "sensores", "riego"}
         c.post("/chat", json={"mensaje": "hola"})
         assert orq.default_agent.memory.messages()
         assert c.post("/reset").json() == {"ok": True}

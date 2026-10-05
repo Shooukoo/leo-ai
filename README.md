@@ -8,14 +8,15 @@ decisiones sobre los cultivos. Se usa como microservicio FastAPI
 
 **Instalación como microservicio:** [`docs/microservicio.md`](docs/microservicio.md).
 
-Hoy hay dos agentes:
+Hoy hay tres agentes:
 
 | Agente | Qué responde |
 |---|---|
 | `monitoreo` (por defecto) | Lecturas recientes por cultivo y recomendaciones generales. |
 | `sensores` | Salud de los sensores: fallas, sensores sin reportar, nivel de depósitos, historial, DPV y riesgo de botrytis. |
+| `riego` | Análisis de riego: ciclos reconstruidos (duración y frecuencia), cuánto sube la humedad de suelo tras cada uno, sobre-riego y riegos sin efecto. |
 
-Todavía no hay hardware: los datos del agente de sensores salen de un simulador.
+Todavía no hay hardware: los datos de los agentes de sensores y de riego salen de un simulador.
 El contexto del proyecto (sensores elegidos, rangos, plan de arranque y
 pendientes) está en [`docs/sensores.md`](docs/sensores.md).
 
@@ -94,8 +95,10 @@ Las rutas de skills y agentes en Markdown se configuran en `config.toml`.
 ### Cómo se elige el agente
 
 Sin `@mención`, el ruteo es por palabras clave y no usa el LLM: los mensajes
+que hablan de riego (riego, regar, sobre-riego, irrigación) van a `riego`; los
 que hablan de sensores, fallas, calibración, depósitos, nivel, CO2, lux, pH,
-EC, DPV o botrytis van a `sensores`; todo lo demás va a `monitoreo`.
+EC, DPV o botrytis van a `sensores`; todo lo demás va a `monitoreo`. Si un
+mensaje menciona riego y sensores, gana `riego`.
 
 Cada agente guarda su propio historial (los últimos 20 mensajes) y el ruteo se
 decide en cada mensaje. Por eso una pregunta de seguimiento sin palabras clave
@@ -136,7 +139,7 @@ docker run -it --rm --env-file .env leo-ai python main.py     # terminal
 
 ## Datos simulados
 
-El agente `sensores` necesita lecturas en `lecturas_sensores`. El simulador las
+Los agentes `sensores` y `riego` necesitan lecturas en `lecturas_sensores`. El simulador las
 genera (una por minuto y por sensor) y además siembra el catálogo:
 
 ```bash
@@ -165,6 +168,12 @@ backfill (30 por defecto):
 | `lux_saturado` | El BH1750 satura en 65535. |
 | `sht31_discrepante` | Dos SHT31 de la misma zona no coinciden. |
 | `suelo_plano` | La humedad del suelo se queda fija (sensor trabado). Necesita `--falla-min 180` para que se detecte. |
+| `sobre_riego` | La humedad del suelo sube 20 puntos: cada riego pasa del máximo de 75 %. |
+| `riego_sin_efecto` | Se riega pero la humedad del suelo no sube. |
+
+El simulador riega 10 minutos cada 4 horas. Para que el agente `riego` vea
+riegos completos con `sobre_riego` o `riego_sin_efecto`, usa `--falla-min 480`
+o más.
 
 ## Pruebas
 
@@ -222,12 +231,25 @@ que devuelven funciones fijas de solo lectura.
 - `betito_bot/sensores/catalogo.py`: la lista de sensores, fuente única para el
   simulador y las pruebas.
 
+### Agente de riego
+
+Sigue el mismo principio: los ciclos y sus diagnósticos se calculan en código.
+
+- `betito_bot/tools/riego_tools.py`: las herramientas `resumen_riego` y
+  `ciclos_riego`. Leen las lecturas de los sensores de suelo que traen
+  `riego_activo` junto a `humedad_suelo_pct`.
+- `betito_bot/sensores/riego.py`: reconstruye los ciclos (rachas de
+  `riego_activo`), mide la humedad antes y el pico hasta 30 min después, y
+  clasifica cada ciclo. Los umbrales son constantes de ese módulo: un riego
+  que sube la humedad menos de 2 puntos es "sin efecto"; uno cuyo pico pasa de
+  75 %, o que empieza con el suelo ya en 70 % o más, es "sobre-riego".
+
 ### Colecciones
 
 | Colección (default) | Quién la usa |
 |---|---|
 | `Mediciones_Sensores` (`LEO_AI` en compose) | Agente `monitoreo`; esquema estricto. |
-| `lecturas_sensores` | Agente `sensores` y simulador; cada sensor publica solo sus variables. |
+| `lecturas_sensores` | Agentes `sensores` y `riego`, y simulador; cada sensor publica solo sus variables. |
 | `sensores` | Catálogo; `sensor_id` único. |
 
 `fecha_hora` se guarda siempre en UTC sin zona horaria.
