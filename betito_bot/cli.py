@@ -110,8 +110,7 @@ class Interfaz:
         self.console.print(
             Panel.fit(
                 "[bold green]BETITO BOT[/] · monitoreo de invernadero\n"
-                "[dim]Escribe tu pregunta. [cyan]/ayuda[/] para comandos, "
-                "[cyan]@sensores[/] o [cyan]@monitoreo[/] para elegir agente.[/]",
+                "[dim]Escribe tu pregunta. [cyan]/ayuda[/] para comandos.",
                 border_style="green",
             )
         )
