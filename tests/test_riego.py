@@ -85,6 +85,15 @@ def test_resumen():
     assert res["total_ciclos"] == 3 and res["riegos_por_dia"] == 24
     assert res["duracion_media_min"] == 5 and res["intervalo_medio_min"] == 60
     assert res["minutos_regando"] == 15 and res["ciclos_por_diagnostico"] == {"ok": 3}
+    assert res["subida_media_pct"] == res["subida_media_ciclos_ok_pct"] == 12
+
+
+def test_resumen_separa_la_subida_de_los_ciclos_ok():
+    humedades = [50] * 10 + [60] * 5 + [62] * 45 + [50] * 10 + [50] * 5 + [50] * 45
+    activos = ([False] * 10 + [True] * 5 + [False] * 45) * 2
+    res = riego.resumir(riego.analizar(_serie(humedades, activos)), horas_cubiertas=2)
+    assert res["ciclos_por_diagnostico"] == {"ok": 1, "sin_efecto": 1}
+    assert res["subida_media_pct"] == 6 and res["subida_media_ciclos_ok_pct"] == 12
 
 
 def test_resumen_sin_ciclos():

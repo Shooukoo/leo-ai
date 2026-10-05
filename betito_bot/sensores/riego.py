@@ -125,5 +125,6 @@ def resumir(ciclos: list[dict], horas_cubiertas: float) -> dict:
         "riegos_por_dia": round(len(ciclos) * 24 / horas_cubiertas, 1) if horas_cubiertas > 0 else None,
         "minutos_regando": round(sum(c["duracion_min"] for c in ciclos), 1),
         "subida_media_pct": _media([c["subida_pct"] for c in ciclos if c.get("subida_pct") is not None]),
+        "subida_media_ciclos_ok_pct": _media([c["subida_pct"] for c in ciclos if c["diagnostico"] == "ok"]),
         "ciclos_por_diagnostico": conteo,
     }
