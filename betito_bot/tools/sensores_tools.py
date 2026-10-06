@@ -11,6 +11,7 @@ load_dotenv()
 
 OBSOLETO_MIN = 10
 VENTANA_PLANO_MIN = 120
+MAX_HORAS_HISTORIAL = 720  # 30 días
 # lux es 0 toda la noche, así que "plano" no indica falla.
 SIN_CHEQUEO_PLANO = {"lux"}
 VENTANAS = {"hora": "%Y-%m-%dT%H:00", "dia": "%Y-%m-%d"}
@@ -97,6 +98,7 @@ class SensoresTools:
         """Última lectura por sensor de un cultivo o parcela (incluye los ambientales compartidos)."""
         if not cultivo and not parcela:
             return {"error": "Indica cultivo o parcela."}
+        obsoleto_min = max(1, obsoleto_min)
         sensores = self._sensores_activos()
         if parcela:
             parcelas = {parcela.lower()}
@@ -121,6 +123,7 @@ class SensoresTools:
         """Sensores sin reportar, con valores fuera de rango, lecturas planas o discrepancias."""
         db = self.get_db()
         ahora = _ahora()
+        obsoleto_min, ventana_plano_min = max(1, obsoleto_min), max(1, ventana_plano_min)
         problemas: dict[str, list[str]] = {}
         sht31: dict[str, list[dict]] = {}
         sensores = self._sensores_activos()
@@ -177,6 +180,8 @@ class SensoresTools:
             return {"error": f"Variable no válida: {variable}", "variables_validas": list(CAMPOS_MEDICION)}
         if ventana not in VENTANAS:
             return {"error": "ventana debe ser 'hora' o 'dia'"}
+        if not 0 < horas <= MAX_HORAS_HISTORIAL:
+            return {"error": f"horas debe estar entre 1 y {MAX_HORAS_HISTORIAL}."}
         fin = _parse_fecha(hasta, _ahora())
         ini = _parse_fecha(desde, fin - datetime.timedelta(hours=horas))
         filtro = {"fecha_hora": {"$gte": ini, "$lte": fin}, variable: {"$ne": None}}

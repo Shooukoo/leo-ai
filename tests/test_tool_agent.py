@@ -76,7 +76,8 @@ def test_reset_borra_memoria():
     ag.respond("primera")
     ag.reset()
     ag.respond("segunda")
-    assert [m.content for m in client.llamadas[1]] == ["sys", "segunda"]
+    sistema, *resto = [m.content for m in client.llamadas[1]]
+    assert sistema.startswith("sys\n\n") and resto == ["segunda"]
 
 
 def test_mencion_fuerza_agente():

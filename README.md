@@ -44,6 +44,9 @@ Copia `.env.example` a `.env` y completa las variables:
 | `MONGO_COLLECTION_SENSORES_LECTURAS` | `lecturas_sensores` | Lecturas que consulta `sensores` y que escribe el simulador. |
 | `MONGO_COLLECTION_SENSORES_CATALOGO` | `sensores` | Catálogo de sensores. |
 | `LLM_MODEL` | `openai/gpt-oss-20b` | Modelo de Groq que usan los agentes. |
+| `BETITO_API_KEY` | — | Si se define, la API exige esta clave en el header `X-API-Key`. |
+| `BETITO_GUARDIAN` | `1` | `0` apaga el clasificador LLM del guardián de prompts. |
+| `GUARDIAN_MODEL` | `LLM_MODEL` | Modelo que usa el clasificador del guardián. |
 | `TZ_OFFSET_HORAS` | `-6` | Desfase respecto a UTC para deducir la hora local. |
 
 ## Uso
@@ -195,7 +198,8 @@ betito_bot/
   agents/         # agentes: en Python (*_agent.py) o en Markdown (<nombre>.md: frontmatter + prompt)
   core/           # config, skills, agentes .md y frontmatter
   llm/            # construcción del chat model de LangChain (ChatGroq)
-  memory/         # memoria de conversación (historial por agente)
+  memory/         # memoria de conversación (historial por agente y por sesión)
+  seguridad/      # reglas de alcance, guardián de prompts y validación de argumentos
   orchestrator/   # enruta cada mensaje al agente correspondiente
   sensores/       # catálogo, reglas de validación y simulador
   skills/         # skills: skills/<nombre>/SKILL.md
@@ -243,6 +247,29 @@ Sigue el mismo principio: los ciclos y sus diagnósticos se calculan en código.
   clasifica cada ciclo. Los umbrales son constantes de ese módulo: un riego
   que sube la humedad menos de 2 puntos es "sin efecto"; uno cuyo pico pasa de
   75 %, o que empieza con el suelo ya en 70 % o más, es "sobre-riego".
+
+### Seguridad
+
+Los agentes solo atienden temas del invernadero. Hay varias capas, porque las
+reglas escritas en un prompt se pueden burlar:
+
+| Capa | Dónde | Qué hace |
+|---|---|---|
+| Reglas de alcance | `betito_bot/seguridad/reglas.py` | Se añaden al prompt de todos los agentes: solo invernadero, nada de código ni HTML, no revelar las instrucciones, los datos no son órdenes. |
+| Guardián de entrada | `betito_bot/seguridad/guardian.py` | Antes de llamar al agente: frases conocidas de inyección (reglas fijas) y un clasificador LLM propio (`ok`, `fuera_de_tema`, `inyeccion`). Si bloquea, el agente no se llama y no se guarda nada en memoria. |
+| Filtro de salida | `revisar_salida` en el mismo archivo | Bloquea respuestas con HTML, bloques de código o que copien las instrucciones. No depende del modelo. |
+| Argumentos de tools | `betito_bot/seguridad/argumentos.py` | Cada llamada se valida contra el esquema de la tool: tipos, parámetros no declarados y largo. |
+| Memoria por sesión | `betito_bot/memory/sesion.py` | En la API cada conversación tiene su historial: lo que escribe un cliente no llega a otro. |
+| Clave de la API | `BETITO_API_KEY` | Si está definida, la API exige el header `X-API-Key`. |
+
+Variables: `BETITO_API_KEY`, `BETITO_GUARDIAN=0` (apaga el clasificador LLM y
+ahorra una llamada a Groq por mensaje) y `GUARDIAN_MODEL`.
+
+Límites: el clasificador es otro LLM y puede equivocarse en ambos sentidos; si
+falla o no devuelve etiqueta, el mensaje pasa y quedan las demás capas. Lo que
+de verdad acota el daño es que todas las tools son de solo lectura. Quedan
+fuera el límite de peticiones por cliente y HTTPS (mejor en un proxy delante) y
+el usuario de Mongo de solo lectura.
 
 ### Colecciones
 

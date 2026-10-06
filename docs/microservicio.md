@@ -101,8 +101,28 @@ curl -X POST http://localhost:8000/chat \
   "herramientas": [
     {"agente": "monitoreo", "nombre": "get_ultimas_lecturas",
      "argumentos": "{\"cultivo\": \"tomate\", \"minutos\": 120}", "error": null}
-  ]
+  ],
+  "sesion": "3f1c9a0e5b7d4c2e9a8f6d1b0c4e7a52",
+  "bloqueado": null
 }
+```
+
+Para continuar la conversación, reenvía `sesion` en el siguiente mensaje. Sin
+`sesion`, cada petición empieza una conversación nueva:
+
+```bash
+curl -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"mensaje": "¿y la fresa?", "sesion": "3f1c9a0e5b7d4c2e9a8f6d1b0c4e7a52"}'
+```
+
+Si en el `.env` defines `BETITO_API_KEY`, todas las rutas salvo `/health`
+exigen el header `X-API-Key`:
+
+```bash
+curl -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" -H "X-API-Key: <tu-clave>" \
+  -d '{"mensaje": "¿Cómo está el tomate?"}'
 ```
 
 Para forzar un agente, usa el campo `agente` o escribe `@nombre` al inicio del
@@ -118,24 +138,31 @@ curl -X POST http://localhost:8000/chat \
 
 | Método | Ruta | Descripción |
 |---|---|---|
-| `POST` | `/chat` | Body `{"mensaje": str, "agente": str opcional}`. Devuelve `agente`, `respuesta` y `herramientas` (las tools que llamaron los agentes, en orden). |
+| `POST` | `/chat` | Body `{"mensaje": str (máx. 2000 caracteres), "agente": str opcional, "sesion": str opcional}`. Devuelve `agente`, `respuesta`, `herramientas` (las tools que llamaron los agentes, en orden), `sesion` y `bloqueado` (motivo si el guardián rechazó el mensaje o la respuesta; si no, `null`). |
 | `GET` | `/agentes` | Lista los agentes disponibles, con su descripción. |
-| `POST` | `/reset` | Borra la memoria de conversación de todos los agentes. |
-| `GET` | `/health` | `{"status": "ok" \| "degradado", "avisos": [...]}`. Es `degradado`, por ejemplo, si falta `API_KEY_GROQ`. |
+| `POST` | `/reset` | Body opcional `{"sesion": str}`: borra la memoria de esa sesión; sin body, la de todas. |
+| `GET` | `/health` | `{"status": "ok" \| "degradado", "avisos": [...]}`. Es `degradado`, por ejemplo, si falta `API_KEY_GROQ`. Avisa también si la API corre sin clave. No pide clave. |
 
 Códigos de error de `/chat`:
 
 | Código | Cuándo |
 |---|---|
+| `401` | Hay `BETITO_API_KEY` y falta el header `X-API-Key` o no coincide. |
 | `404` | El agente pedido no existe. |
-| `422` | Body inválido (por ejemplo, `mensaje` vacío). |
-| `502` | Falló el modelo o la base de datos. El detalle viene en `detail`. |
+| `422` | Body inválido (por ejemplo, `mensaje` vacío o de más de 2000 caracteres). |
+| `502` | Falló el modelo o la base de datos. El detalle queda en el log del servicio, no en la respuesta. |
 | `503` | El servicio arrancó sin cliente de Groq (revisa `API_KEY_GROQ`). |
 
 ## 6. Notas
 
-- Cada agente guarda en memoria los últimos 20 mensajes. Esa memoria es del
-  proceso y la comparten todos los clientes de la API. `POST /reset` la borra.
+- Cada agente guarda en memoria los últimos 20 mensajes de cada sesión. La
+  memoria vive en el proceso (se pierde al reiniciar) y se conservan hasta 200
+  sesiones; al pasarse se descarta la que lleva más tiempo sin usarse.
+- Un mensaje fuera de tema o con un intento de inyección no llega a los
+  agentes: la respuesta es una negativa fija y `bloqueado` trae el motivo. Ver
+  la sección "Seguridad" del `README.md`.
+- El guardián hace una llamada extra a Groq por mensaje. `BETITO_GUARDIAN=0`
+  la apaga y deja solo las reglas fijas.
 - La API atiende un mensaje a la vez, porque la memoria de los agentes no es
   segura para uso concurrente.
 - La interfaz de terminal sigue disponible: `docker compose run --rm consola` o

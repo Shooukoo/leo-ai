@@ -175,12 +175,14 @@ class Interfaz:
             self.console.print(Text.assemble(("  ⎿ ", "dim"), ("delega en ", "dim"), (f"@{ev.agente}", "magenta")))
         elif ev.tipo == "agente_fin" and not ev.datos.get("ok"):
             self.console.print(Text(f"    ✗ @{ev.agente} no terminó", style="red"))
+        elif ev.tipo == "bloqueado":
+            self.console.print(Text(f"  ⎿ bloqueado: {ev.datos.get('motivo')}", style="yellow"))
 
-    def responder(self, texto: str):
+    def responder(self, texto: str, texto_usuario: str | None = None):
         try:
             with self.console.status("pensando…", spinner="dots") as status:
                 self._status = status
-                respuesta = self.orchestrator.handle(texto, on_event=self.on_event)
+                respuesta = self.orchestrator.handle(texto, on_event=self.on_event, texto_usuario=texto_usuario)
         except AgenteDesconocido as e:
             disponibles = ", ".join(f"@{n}" for n in self.orchestrator.agents)
             self.console.print(f"[yellow]No existe el agente @{e}.[/] Disponibles: {disponibles}")
@@ -220,7 +222,8 @@ class Interfaz:
             self.bienvenida()
             self.console.print("[dim]Memoria de los agentes borrada.[/]")
         elif skill is not None:
-            self.responder(mensaje_para_agente(skill, argumentos.strip()))
+            # El guardián revisa solo lo que escribió la persona, no las instrucciones de la skill.
+            self.responder(mensaje_para_agente(skill, argumentos.strip()), texto_usuario=argumentos.strip())
         else:
             self.console.print(f"[yellow]Comando desconocido: {comando}.[/] Escribe /ayuda.")
         return True

@@ -1,5 +1,6 @@
 import json
 import os
+from collections import OrderedDict
 from typing import Any, Callable
 
 from langchain_core.language_models import BaseChatModel
@@ -7,7 +8,11 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 
 from betito_bot.agents.base import BaseAgent
 from betito_bot.agents.eventos import Evento, OnEvento
+from betito_bot.memory.sesion import MAX_SESIONES, SESION
 from betito_bot.memory.simple_memory import SimpleMemory
+from betito_bot.seguridad.argumentos import validar_argumentos
+from betito_bot.seguridad.guardian import revisar_salida
+from betito_bot.seguridad.reglas import RECHAZO, REGLAS_COMUNES
 
 DEFAULT_MODEL = "openai/gpt-oss-20b"
 MEMORY_MAX_MESSAGES = 20
@@ -35,6 +40,10 @@ class ToolAgent(BaseAgent):
     cual) y un registro `{nombre_tool: callable}`. El bucle tiene tope de
     iteraciones y cualquier excepción de una tool vuelve al modelo como
     `{"error": ...}`. Si se pasa `on_event`, se le avisa cada paso (ver `Evento`).
+
+    Seguridad: al prompt se le añaden `REGLAS_COMUNES`, los argumentos de cada
+    tool se validan contra su esquema y la respuesta final pasa por
+    `revisar_salida`. La memoria es una por sesión (ver `memory/sesion.py`).
     """
 
     name = "tool_agent"
@@ -50,21 +59,41 @@ class ToolAgent(BaseAgent):
         max_iterations: int = MAX_ITERATIONS,
     ):
         self.client = client
-        self.system_prompt = SystemMessage(content=system_prompt)
+        self.system_prompt = SystemMessage(content=f"{system_prompt}\n\n{REGLAS_COMUNES}")
         self.tools_schema = tools_schema
         self.registry = registry
         self.model = model or os.getenv("LLM_MODEL", DEFAULT_MODEL)
         self.max_iterations = max_iterations
-        self.memory = SimpleMemory(MEMORY_MAX_MESSAGES)
+        self._memorias: OrderedDict[str, SimpleMemory] = OrderedDict()
 
-    def reset(self) -> None:
-        self.memory.clear()
+    @property
+    def memory(self) -> SimpleMemory:
+        """Memoria de la sesión en curso; se crea al primer uso."""
+        sesion = SESION.get()
+        if sesion not in self._memorias:
+            self._memorias[sesion] = SimpleMemory(MEMORY_MAX_MESSAGES)
+            if len(self._memorias) > MAX_SESIONES:
+                self._memorias.popitem(last=False)
+        self._memorias.move_to_end(sesion)
+        return self._memorias[sesion]
+
+    def reset(self, todas: bool = False) -> None:
+        if todas:
+            self._memorias.clear()
+        else:
+            self._memorias.pop(SESION.get(), None)
+
+    def _schema_de(self, name: str) -> dict | None:
+        return next((s for s in self.tools_schema if s["function"]["name"] == name), None)
 
     def run_tool(self, name: str, args: dict[str, Any]) -> dict:
         func = self.registry.get(name)
         if func is None:
             return {"error": f"Herramienta desconocida: {name}"}
         try:
+            schema = self._schema_de(name)
+            if schema is not None:
+                args = validar_argumentos(schema, args)
             return func(**args)
         except Exception as e:  # el modelo debe ver el fallo, no el programa caerse
             return {"error": f"{type(e).__name__}: {e}"}
@@ -89,6 +118,10 @@ class ToolAgent(BaseAgent):
             msg: AIMessage = llm.invoke(messages)
             if not msg.tool_calls and not msg.invalid_tool_calls:
                 assistant_text = msg.text or ""
+                motivo = revisar_salida(assistant_text, self.system_prompt.content)
+                if motivo:  # no se guarda: una respuesta bloqueada no debe quedar como contexto
+                    self._emitir(on_event, "bloqueado", etapa="salida", motivo=motivo)
+                    return RECHAZO
                 self.memory.add("user", user_text)
                 self.memory.add("assistant", assistant_text)
                 return assistant_text

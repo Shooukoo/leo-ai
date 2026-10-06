@@ -13,5 +13,5 @@ class BaseAgent(ABC):
     def respond(self, user_text: str, on_event: OnEvento | None = None) -> str:
         ...
 
-    def reset(self) -> None:
-        """Olvida el historial de conversación del agente."""
+    def reset(self, todas: bool = False) -> None:
+        """Olvida el historial de la sesión en curso o, con `todas`, el de todas."""

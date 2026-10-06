@@ -22,6 +22,7 @@ ERRORES_DS18B20 = {85.0, -127.0}
 CO2_MIN, CO2_MAX = 300, 2000
 LUX_SATURADO = 65535
 DIA_INICIO_H, DIA_FIN_H = 8, 17  # horas locales en las que lux=0 es sospechoso
+MAX_TEXTO_FALLA = 80
 
 # Campos numéricos que cada sensor puede publicar (para ignorar el resto del documento).
 CAMPOS_MEDICION = (
@@ -91,7 +92,8 @@ def validar(doc: dict) -> list[str]:
         avisos.append(f"nivel_deposito_pct={pct} mayor a 100")
 
     for falla in doc.get("fallas") or []:
-        avisos.append(f"falla reportada por el firmware: {falla}")
+        # Texto libre del firmware que termina en el modelo: se recorta.
+        avisos.append(f"falla reportada por el firmware: {str(falla)[:MAX_TEXTO_FALLA]}")
 
     return avisos
 

@@ -12,6 +12,8 @@ class Evento:
     - `tool_result`: terminó la herramienta; datos `nombre`, `error` (None si salió bien) y `resultado`.
     - `agente_inicio` / `agente_fin`: el orquestador delegó una tarea a otro agente
       (`tool_call` de `delegate`); datos `tarea` en el inicio y `ok` en el fin.
+    - `bloqueado`: el guardián rechazó el mensaje (`etapa="entrada"`) o la respuesta
+      (`etapa="salida"`); datos `etapa` y `motivo`.
     """
 
     tipo: str

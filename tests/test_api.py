@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from betito_bot.api import create_app
+from betito_bot.api import AVISO_SIN_CLAVE, create_app
 from betito_bot.orchestrator.router import Orchestrator
 from tests.fakes import FakeClient, resp, tool_call
 
@@ -19,17 +19,20 @@ def _cliente(*respuestas):
 
 def test_health():
     with _cliente() as c:
-        assert c.get("/health").json() == {"status": "ok", "avisos": []}
+        assert c.get("/health").json() == {"status": "ok", "avisos": [AVISO_SIN_CLAVE]}
 
 
 def test_chat_rutea_y_reporta_herramientas():
     with _cliente(resp(tool_calls=[tool_call("estado_sensores", {"obsoleto_min": 10})]), resp("8 sensores, sin problemas")) as c:
         r = c.post("/chat", json={"mensaje": "¿Cómo están los sensores?"})
     assert r.status_code == 200
-    assert r.json() == {
+    datos = r.json()
+    assert len(datos.pop("sesion")) == 32
+    assert datos == {
         "agente": "sensores",
         "respuesta": "8 sensores, sin problemas",
         "herramientas": [{"agente": "sensores", "nombre": "estado_sensores", "argumentos": '{"obsoleto_min": 10}', "error": None}],
+        "bloqueado": None,
     }
 
 
@@ -66,7 +69,7 @@ def test_agente_desconocido_da_404():
 def test_fallo_del_modelo_da_502():
     with _cliente(RuntimeError("Groq no responde")) as c:
         r = c.post("/chat", json={"mensaje": "hola"})
-    assert r.status_code == 502 and "Groq no responde" in r.json()["detail"]
+    assert r.status_code == 502 and "Groq no responde" not in r.text and "falló el modelo" in r.json()["detail"]
 
 
 def test_mensaje_vacio_da_422():
@@ -78,10 +81,10 @@ def test_agentes_y_reset():
     orq = _orquestador(resp("hola"))
     with TestClient(create_app(orq)) as c:
         assert {a["nombre"] for a in c.get("/agentes").json()} == {"monitoreo", "sensores", "riego"}
-        c.post("/chat", json={"mensaje": "hola"})
-        assert orq.default_agent.memory.messages()
+        c.post("/chat", json={"mensaje": "hola", "sesion": "s1"})
+        assert orq.default_agent._memorias["s1"].messages()
         assert c.post("/reset").json() == {"ok": True}
-    assert not orq.default_agent.memory.messages()
+    assert not orq.default_agent._memorias
 
 
 def test_sin_orquestador_responde_503(monkeypatch):
@@ -89,6 +92,6 @@ def test_sin_orquestador_responde_503(monkeypatch):
 
     monkeypatch.setattr(api, "_orquestador_por_defecto", lambda: (None, ["Falta API_KEY_GROQ."]))
     with TestClient(api.create_app()) as c:
-        assert c.get("/health").json() == {"status": "degradado", "avisos": ["Falta API_KEY_GROQ."]}
+        assert c.get("/health").json() == {"status": "degradado", "avisos": ["Falta API_KEY_GROQ.", AVISO_SIN_CLAVE]}
         r = c.post("/chat", json={"mensaje": "hola"})
     assert r.status_code == 503 and "API_KEY_GROQ" in r.json()["detail"]

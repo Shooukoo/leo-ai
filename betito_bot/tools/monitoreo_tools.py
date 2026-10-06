@@ -1,4 +1,5 @@
 import os
+import re
 import datetime
 from dotenv import load_dotenv
 from pymongo import MongoClient
@@ -6,6 +7,8 @@ from pymongo.errors import ConnectionFailure, ConfigurationError, OperationFailu
 
 # Cargar variables de entorno desde el archivo .env
 load_dotenv()
+
+MAX_MINUTOS = 7 * 24 * 60  # una semana
 
 
 class MonitoreoTools():
@@ -76,9 +79,11 @@ class MonitoreoTools():
         db = self.get_db()
         coleccion = db[self.COLLECTION_NAME]
 
+        minutos = max(1, min(int(minutos), MAX_MINUTOS))
         desde = datetime.datetime.utcnow() - datetime.timedelta(minutes=minutos)
 
-        filtro_cultivo = {"cultivo": {"$regex": f"^{cultivo}$", "$options": "i"}}
+        # re.escape: el nombre viene del modelo y no debe interpretarse como expresión regular.
+        filtro_cultivo = {"cultivo": {"$regex": f"^{re.escape(cultivo)}$", "$options": "i"}}
 
         cursor = coleccion.find(
             {**filtro_cultivo, "fecha_hora": {"$gte": desde}}
