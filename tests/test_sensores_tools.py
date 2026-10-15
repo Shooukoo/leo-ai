@@ -56,10 +56,13 @@ def test_ultimo_estado_marca_obsoleta_sin_inventar(db):
     assert res["lecturas"][0]["obsoleta"] is True
 
 
-def test_ultimo_estado_requiere_filtro_y_cultivo_inexistente(db):
+def test_ultimo_estado_sin_filtros_devuelve_todo_y_cultivo_inexistente_falla(db):
     _poblar(db, minutos=5)
     t = SensoresTools(db)
-    assert "error" in t.ultimo_estado()
+    res = t.ultimo_estado()
+    assert "error" not in res
+    assert len(res["lecturas"]) == 8
+    assert all("parcela" in l and "cultivo" in l for l in res["lecturas"])
     assert "error" in t.ultimo_estado(cultivo="Aguacate")
 
 
@@ -80,7 +83,9 @@ def test_nivel_depositos_tendencia(db):
     assert dep["horas_hasta_vacio"] > 0
 
 
-def test_calculos():
+def test_calcular_semaforo_tool():
     t = SensoresTools(db=object())
-    assert t.calcular_dpv(25, 60)["dpv_kpa"] == 1.27
-    assert t.riesgo_botrytis(20, 92)["riesgo"] == "alto"
+    verde = t.calcular_semaforo(22.5, 68)
+    assert verde["semaforo"] == "verde" and verde["riesgo_botrytis"] == "bajo"
+    assert t.calcular_semaforo(25, 60)["semaforo"] == "amarillo"   # DPV 1.27, gana el DPV
+    assert t.calcular_semaforo(20, 92)["semaforo"] == "rojo"       # botrytis alto

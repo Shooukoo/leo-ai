@@ -31,7 +31,7 @@ _OBJ = "object"
 TOOLS_SCHEMA = [
     {"type": "function", "function": {
         "name": "estado_sensores",
-        "description": "Diagnóstico de todos los sensores: sin reportar, valores fuera de rango o de error, lecturas planas (trabado) y discrepancias entre SHT31 de la misma zona.",
+        "description": "Última lectura de cada sensor, con avisos y marca de obsoleta. Sin argumentos devuelve todas las parcelas; con cultivo o parcela, solo esa (incluye los sensores ambientales compartidos). Cada lectura indica su parcela y cultivo.",
         "parameters": {"type": _OBJ, "properties": {
             "obsoleto_min": {"type": "integer", "description": "Minutos sin lectura para considerar un sensor sin reportar (default 10)."},
         }}}},

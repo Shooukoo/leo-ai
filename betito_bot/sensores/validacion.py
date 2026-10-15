@@ -7,6 +7,14 @@ import datetime
 import math
 import os
 
+# Umbrales del semáforo de diagnóstico (kPa). Ambos extremos incluidos.
+DPV_IDEAL = (0.8, 1.2)       # verde
+DPV_ACEPTABLE = (0.4, 1.6)   # amarillo; fuera de este rango, rojo
+
+_ORDEN_SEMAFORO = {"verde": 0, "amarillo": 1, "rojo": 2}
+_SEMAFORO_POR_RIESGO = {"bajo": "verde", "medio": "amarillo", "alto": "rojo"}
+
+
 # (mínimo, máximo) válidos, ambos incluidos. Fuera de rango -> aviso.
 # pH, NPK, nivel y lux tienen reglas propias más abajo (mensajes específicos).
 RANGOS = {
@@ -133,3 +141,20 @@ def riesgo_botrytis(temp_c: float, hr_pct: float) -> str:
     if hr_pct >= 85 and 10 <= temp_c <= 28:
         return "medio"
     return "bajo"
+
+def semaforo_cultivo(dpv: float | None, riesgo: str | None) -> str:
+    """'verde', 'amarillo' o 'rojo'; gana el peor de los dos criterios.
+
+    Devuelve 'sin_datos' si falta el DPV o el riesgo.
+    """
+    if dpv is None or riesgo is None:
+        return "sin_datos"
+    if riesgo not in _SEMAFORO_POR_RIESGO:
+        raise ValueError(f"riesgo de botrytis no válido: {riesgo!r}")
+    if DPV_IDEAL[0] <= dpv <= DPV_IDEAL[1]:
+        por_dpv = "verde"
+    elif DPV_ACEPTABLE[0] <= dpv <= DPV_ACEPTABLE[1]:
+        por_dpv = "amarillo"
+    else:
+        por_dpv = "rojo"
+    return max(por_dpv, _SEMAFORO_POR_RIESGO[riesgo], key=_ORDEN_SEMAFORO.__getitem__)
