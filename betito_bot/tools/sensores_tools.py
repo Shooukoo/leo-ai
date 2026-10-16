@@ -95,22 +95,27 @@ class SensoresTools:
 
     def ultimo_estado(self, cultivo: str | None = None, parcela: str | None = None,
                       obsoleto_min: int = OBSOLETO_MIN) -> dict:
-        """Última lectura por sensor de un cultivo o parcela (incluye los ambientales compartidos)."""
-        if not cultivo and not parcela:
-            return {"error": "Indica cultivo o parcela."}
+        """Última lectura por sensor. Sin filtros devuelve todas las parcelas; con cultivo o
+        parcela, solo esa (incluye los ambientales compartidos)."""
         obsoleto_min = max(1, obsoleto_min)
         sensores = self._sensores_activos()
         if parcela:
             parcelas = {parcela.lower()}
-        else:
+        elif cultivo:
             parcelas = {s["parcela"].lower() for s in sensores
                         if (s.get("cultivo") or "").lower() == cultivo.lower()}
+        else:
+            parcelas = {s["parcela"].lower() for s in sensores}
         seleccion = [s for s in sensores if s["parcela"].lower() in parcelas]
         if not seleccion:
             return {"cultivo": cultivo, "parcela": parcela, "error": "No hay sensores en el catálogo para esa consulta."}
 
         ahora = _ahora()
-        lecturas = [self._resumen_lectura(s, self._ultima(s["sensor_id"]), obsoleto_min, ahora) for s in seleccion]
+        lecturas = [
+            {"parcela": s["parcela"], "cultivo": s.get("cultivo"),
+             **self._resumen_lectura(s, self._ultima(s["sensor_id"]), obsoleto_min, ahora)}
+            for s in seleccion
+        ]
         return {
             "cultivo": cultivo,
             "parcelas": sorted(parcelas),
@@ -251,3 +256,13 @@ class SensoresTools:
     def riesgo_botrytis(temp_c: float, hr_pct: float) -> dict:
         return {"temp_c": temp_c, "hr_pct": hr_pct, "riesgo": validacion.riesgo_botrytis(temp_c, hr_pct),
                 "nota": "heurística simple basada en temperatura y humedad relativa"}
+
+    @staticmethod
+    def calcular_semaforo(temp_c: float, hr_pct: float) -> dict:
+        dpv = validacion.dpv_kpa(temp_c, hr_pct)
+        riesgo = validacion.riesgo_botrytis(temp_c, hr_pct)
+        return {
+            "temp_c": temp_c, "hr_pct": hr_pct,
+            "dpv_kpa": dpv, "riesgo_botrytis": riesgo,
+            "semaforo": validacion.semaforo_cultivo(dpv, riesgo),
+        }

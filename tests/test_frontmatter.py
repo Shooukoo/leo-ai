@@ -84,7 +84,7 @@ def test_construir_orquestador_registra_agentes_y_skills(tmp_path):
     (agentes / "malo.md").write_text("---\ndescription: d\ntools: [nope]\n---\nP", encoding="utf-8")
     _skill(skills, "rep", "---\nname: rep\ndescription: d\n---\nP")
     orq, avisos = construir_orquestador(Config(skills_dir=skills, agentes_dir=agentes), client=None)
-    assert set(orq.agents) == {"monitoreo", "sensores", "riego", "clima"}
+    assert set(orq.agents) == {"monitoreo", "sensores", "riego", "clima", "diagnostico"}
     assert orq.agents["clima"].registry["calcular_dpv"](temp_c=25, hr_pct=60)  # la tool real
     assert len(avisos) == 2
     nombres = [s["function"]["name"] for s in orq.default_agent.tools_schema]

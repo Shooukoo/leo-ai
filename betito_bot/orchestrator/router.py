@@ -5,6 +5,7 @@ from typing import Callable
 from langchain_core.language_models import BaseChatModel
 
 from betito_bot.agents.base import BaseAgent
+from betito_bot.agents.diagnostico_agent import DiagnosticoAgent
 from betito_bot.agents.eventos import Evento, OnEvento
 from betito_bot.agents.monitoreo_agent import MonitoreoAgent
 from betito_bot.agents.riego_agent import RiegoAgent
@@ -23,7 +24,7 @@ SENSORES_PATRON = re.compile(
 # Preguntas sobre el riego. Se compara antes que SENSORES_PATRON: una pregunta de riego
 # suele mencionar también "sensor" o "nivel".
 RIEGO_PATRON = re.compile(r"\b(rieg\w*|sobrerieg\w*|regar\w*|rego|regaron|regando|regamos|regad\w*|irriga\w*)\b")
-
+DIAGNOSTICO_PATRON = re.compile(r"\b(semaforo\w*|diagnostico de (estado|cultivos?|los cultivos))\b")
 
 # `@nombre resto del mensaje` fuerza el agente sin pasar por el ruteo.
 MENCION_PATRON = re.compile(r"^@(\w+)\s*(.*)$", re.DOTALL)
@@ -50,6 +51,7 @@ class Orchestrator:
     fallas, depósitos o variables como CO2/lux/pH/EC van a `sensores`; el resto
     a `monitoreo`.
     Un mensaje que empieza con `@nombre` va directo a ese agente.
+    peticiones de semáforo o diagnóstico de estado van a diagnostico
 
     Con `guardian`, cada mensaje se revisa antes de llegar al agente; sin él no
     hay revisión de entrada (las pruebas y el modo falso lo omiten).
@@ -62,6 +64,7 @@ class Orchestrator:
             self.default_agent.name: self.default_agent,
             "sensores": SensoresAgent(client),
             "riego": RiegoAgent(client),
+            "diagnostico": DiagnosticoAgent(client),
         }
         self.skills = skills or {}  # {nombre: Skill}; ver betito_bot/core/skills.py
         self.ultimo_agente: BaseAgent | None = None
@@ -143,6 +146,8 @@ class Orchestrator:
         texto = _normalizar(user_text)
         if RIEGO_PATRON.search(texto):
             return self.agents["riego"]
+        if DIAGNOSTICO_PATRON.search(texto):
+            return self.agents["diagnostico"]
         if SENSORES_PATRON.search(texto):
             return self.agents["sensores"]
         return self.default_agent

@@ -8,13 +8,14 @@ decisiones sobre los cultivos. Se usa como microservicio FastAPI
 
 **Instalación como microservicio:** [`docs/microservicio.md`](docs/microservicio.md).
 
-Hoy hay tres agentes:
+Hoy hay cuatro agentes:
 
 | Agente | Qué responde |
 |---|---|
 | `monitoreo` (por defecto) | Lecturas recientes por cultivo y recomendaciones generales. |
 | `sensores` | Salud de los sensores: fallas, sensores sin reportar, nivel de depósitos, historial, DPV y riesgo de botrytis. |
 | `riego` | Análisis de riego: ciclos reconstruidos (duración y frecuencia), cuánto sube la humedad de suelo tras cada uno, sobre-riego y riegos sin efecto. |
+| `diagnostico` | Diagnóstico de estado: calcula el DPV y el riesgo de botrytis con la temperatura y la humedad del aire y da un semáforo (verde, amarillo, rojo) por cultivo con una explicación corta. |
 
 Todavía no hay hardware: los datos de los agentes de sensores y de riego salen de un simulador.
 El contexto del proyecto (sensores elegidos, rangos, plan de arranque y
@@ -99,9 +100,12 @@ Las rutas de skills y agentes en Markdown se configuran en `config.toml`.
 
 Sin `@mención`, el ruteo es por palabras clave y no usa el LLM: los mensajes
 que hablan de riego (riego, regar, sobre-riego, irrigación) van a `riego`; los
-que hablan de sensores, fallas, calibración, depósitos, nivel, CO2, lux, pH,
-EC, DPV o botrytis van a `sensores`; todo lo demás va a `monitoreo`. Si un
-mensaje menciona riego y sensores, gana `riego`.
+que piden el semáforo o el diagnóstico de estado (semáforo, diagnóstico de
+estado, diagnóstico de cultivos) van a `diagnostico`; los que hablan de
+sensores, fallas, calibración, depósitos, nivel, CO2, lux, pH, EC, DPV o
+botrytis van a `sensores`; todo lo demás va a `monitoreo`. Si un mensaje
+menciona riego y otra cosa, gana `riego`; `diagnostico` se evalúa antes que
+`sensores`.
 
 Cada agente guarda su propio historial (los últimos 20 mensajes) y el ruteo se
 decide en cada mensaje. Por eso una pregunta de seguimiento sin palabras clave
@@ -247,6 +251,22 @@ Sigue el mismo principio: los ciclos y sus diagnósticos se calculan en código.
   clasifica cada ciclo. Los umbrales son constantes de ese módulo: un riego
   que sube la humedad menos de 2 puntos es "sin efecto"; uno cuyo pico pasa de
   75 %, o que empieza con el suelo ya en 70 % o más, es "sobre-riego".
+
+### Agente de diagnóstico
+
+Da un semáforo por cultivo a partir de la temperatura y la humedad del aire.
+No tiene tools propias: reutiliza `ultimo_estado`, `calcular_dpv` y
+`riesgo_botrytis` del agente de sensores.
+
+- `betito_bot/agents/diagnostico_agent.py`: el agente. El DPV y el riesgo de
+  botrytis los calculan las tools; el semáforo lo arma el modelo siguiendo las
+  reglas del prompt y gana siempre el peor de los dos criterios. Los umbrales
+  de DPV son constantes al inicio del archivo.
+- Verde: botrytis bajo y DPV entre 0.8 y 1.2 kPa. Amarillo: botrytis medio o
+  DPV entre 0.4 y 0.8 o entre 1.2 y 1.6 kPa. Rojo: botrytis alto o DPV fuera
+  de 0.4 a 1.6 kPa. Si la lectura de aire está obsoleta, con avisos o
+  incompleta, el cultivo sale como "sin datos confiables" (⚪).
+- EC y pH no se evalúan todavía: se agregarán cuando existan esos sensores.
 
 ### Seguridad
 
